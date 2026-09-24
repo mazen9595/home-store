@@ -667,7 +667,7 @@
         <header>
             <div class="store-title">
                 <h1>بقالة أم محمد 🛒</h1>
-                <p>توصيل سريع لجميع الغرف1.6</p>
+                <p>توصيل سريع لجميع الغرف1.7</p>
             </div>
             <div class="header-actions">
                 <button class="icon-btn" onclick="toggleChat()" title="دردشة العائلة">
@@ -951,7 +951,7 @@
         let isUserAdmin = false;
         let activeCategory = 'all';
 
-        const familyMembers = ['بابا', 'ماما', 'مازن', 'رتال', 'مهاب''];
+        const familyMembers = ['بابا', 'ماما', 'مازن', 'رتال', 'مهاب'];
         let cart = [];
         let debtsData = {};
 
@@ -969,7 +969,7 @@
             if (doc.exists) {
                 debtsData = doc.data();
             } else {
-                debtsData = { 'بابا': 0, 'ماما': 0, 'مازن': 0, 'رتال': 0, 'مهاب': 0, 'الدعم': 0 };
+                debtsData = { 'بابا': 0, 'ماما': 0, 'مازن': 0, 'رتال': 0, 'مهاب': 0 };
                 db.collection("storeData").doc("debts").set(debtsData);
             }
             const debtsLoader = document.getElementById('debtsLoader');
