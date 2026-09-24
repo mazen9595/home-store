@@ -667,7 +667,7 @@
         <header>
             <div class="store-title">
                 <h1>بقالة أم محمد 🛒</h1>
-                <p>توصيل سريع لجميع الغرف1.8</p>
+                <p>توصيل سريع لجميع الغرف1.9</p>
             </div>
             <div class="header-actions">
                 <button class="icon-btn" onclick="toggleChat()" title="دردشة العائلة">
@@ -1375,6 +1375,7 @@
             document.getElementById('debtWarningBox').style.display = method.includes('دين') ? 'block' : 'none';
         }
 
+        // حفظ تفاصيل الطلب سحابياً في جدول storeOrders (بدون أي تعديل على واجهة الموقع)
         function checkoutWhatsApp() {
             if(cart.length === 0) { alert('السلة فارغة يا غالي!'); return; }
             if(!selectedBuyerName) { alert('الرجاء اختيار اسم الشخص طالب الطلبية أولاً!'); return; }
@@ -1400,6 +1401,7 @@
             const now = new Date();
             const dateString = now.toLocaleDateString('ar-SA') + ' ' + now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
 
+            // حفظ الطلب سحابياً في قاعدة البيانات (Firestore)
             db.collection("storeOrders").add({
                 buyer: selectedBuyerName,
                 location: selectedLocationName,
@@ -1409,7 +1411,7 @@
                 orderTime: dateString,
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
-                console.log("تم حفظ الطلب سحابياً بنجاح");
+                console.log("تم حفظ سجل الطلب سحابياً بنجاح");
             }).catch(error => {
                 console.error("خطأ في حفظ الطلب سحابياً: ", error);
             });
@@ -1474,7 +1476,7 @@
                 renderAdminProductsListModal();
                 renderAdminCategoriesList();
                 renderProducts(activeCategory);
-                if (cachedChatSnapshot) renderChatMessages(cachedChatSnapshot); // تحديث الشات فوراً لإظهار أزرار الحذف
+                if (cachedChatSnapshot) renderChatMessages(cachedChatSnapshot);
                 alert('تم فتح لوحة إدارة المتجر بنجاح ✅');
             } else {
                 alert('كلمة المرور غير صحيحة! ❌');
