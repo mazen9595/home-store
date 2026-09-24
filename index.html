@@ -77,15 +77,15 @@
 
         .header-actions {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             align-items: center;
         }
 
         .icon-btn {
             background: #FFF5F5;
             border: none;
-            width: 40px;
-            height: 40px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
             display: flex;
             justify-content: center;
@@ -93,7 +93,7 @@
             position: relative;
             cursor: pointer;
             transition: transform 0.2s;
-            font-size: 16px;
+            font-size: 15px;
         }
 
         .icon-btn:active {
@@ -589,6 +589,57 @@
             line-height: 1.5;
             font-weight: 700;
         }
+
+        /* تنسيق قسم الدردشة */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #F1F5F9;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .chat-bubble {
+            max-width: 80%;
+            padding: 10px 14px;
+            border-radius: 14px;
+            font-size: 13px;
+            position: relative;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+            word-break: break-word;
+        }
+
+        .chat-bubble.mine {
+            background: #E0F2FE;
+            align-self: flex-start;
+            border-bottom-right-radius: 2px;
+        }
+
+        .chat-bubble.others {
+            background: white;
+            align-self: flex-end;
+            border-bottom-left-radius: 2px;
+            border: 1px solid #E2E8F0;
+        }
+
+        .chat-meta {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -601,6 +652,9 @@
                 <p>توصيل سريع لجميع الغرف</p>
             </div>
             <div class="header-actions">
+                <button class="icon-btn" onclick="toggleChat()" title="دردشة العائلة">
+                    💬
+                </button>
                 <button class="icon-btn" onclick="openAdminSettings()" title="إدارة المنتجات والأقسام">
                     ⚙️
                 </button>
@@ -651,6 +705,50 @@
         </div>
     </div>
 
+    <!-- درج الدردشة العائلية -->
+    <div class="drawer" id="chatDrawer">
+        <div class="drawer-header">
+            <h2>دردشة البيت 💬</h2>
+            <button class="close-btn" onclick="toggleChat()">✕</button>
+        </div>
+        
+        <div class="drawer-body" style="display: flex; flex-direction: column;">
+            
+            <!-- قسم التحقق من هوية المستخدم (من أنت؟) -->
+            <div class="auth-box" id="chatAuthBox">
+                <p>من أنت؟ 👤</p>
+                <div class="selection-section" style="margin-bottom: 10px;">
+                    <div class="chips-grid" id="chatIdentityChips" style="justify-content: center;">
+                        <div class="option-chip" onclick="selectChatIdentity('بابا')">بابا</div>
+                        <div class="option-chip" onclick="selectChatIdentity('ماما')">ماما</div>
+                        <div class="option-chip" onclick="selectChatIdentity('مازن')">مازن</div>
+                        <div class="option-chip" onclick="selectChatIdentity('رتال')">رتال</div>
+                        <div class="option-chip" onclick="selectChatIdentity('مهاب')">مهاب</div>
+                    </div>
+                </div>
+                <button class="btn-primary" style="padding: 10px; font-size: 13px;" onclick="confirmChatIdentity()">دخول للدردشة 🚀</button>
+            </div>
+
+            <!-- محتوى صندوق الدردشة بعد اختيار الهوية -->
+            <div class="chat-container" id="chatMainBox" style="display: none; height: 100%;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px; text-align: center;">متحدث باسم: <strong id="currentChatUserLabel" style="color: var(--primary);"></strong> (<a href="#" onclick="changeChatIdentity()" style="color: #0984E3; text-decoration: none;">تغيير</a>)</div>
+                
+                <div class="chat-messages" id="chatMessagesList">
+                    <div id="chatLoader" style="text-align: center; padding: 20px;">
+                        <div class="mini-spinner" style="margin: 0 auto 5px auto;"></div>
+                        <p style="font-size: 11px; color: var(--text-muted);">جاري تحميل الرسائل...</p>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 6px; margin-top: 5px;">
+                    <input type="text" id="chatMessageInput" placeholder="اكتب رسالتك هنا..." style="flex: 1; padding: 10px; border: 1px solid #CBD5E1; border-radius: 12px; font-family: 'Tajawal', sans-serif; font-size: 13px;" onkeypress="handleChatKeyPress(event)" />
+                    <button class="btn-primary" style="width: auto; padding: 0 15px; margin: 0; border-radius: 12px;" onclick="sendChatMessage()">إرسال</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
     <!-- درج السلة -->
     <div class="drawer" id="cartDrawer">
         <div class="drawer-header">
@@ -697,7 +795,7 @@
             </div>
 
             <div class="debt-warning-box" id="debtWarningBox">
-                ⚠️ تنبيه: اختيارك للدفع (دين 📒) يعني أنه سيتم تسجيل هذا المبلغ في دفتر الديون الخاص بك تلقائياً وبشكل فوري بمجرد إرسال الطلب، يعني مافي ارسلت بالغلط! 😉
+                ⚠️ تنبيه ودي: اختيارك للدفع (دين 📒) يعني أنه سيتم تسجيل هذا المبلغ في دفتر الديون الخاص بك تلقائياً وبشكل فوري بمجرد إرسال الطلب، فلا تشيل هم السداد الحين! 😉
             </div>
 
             <div style="display: flex; justify-content: space-between; margin: 12px 0; font-weight: 700; font-size: 15px;">
@@ -705,7 +803,7 @@
                 <span id="cartTotal" style="color: var(--primary);">0 ريال</span>
             </div>
 
-            <button class="btn-primary" onclick="checkoutWhatsApp()">إرسال الطلب 🚀</button>
+            <button class="btn-primary" onclick="checkoutWhatsApp()">إرسال الطلب لحمودي عبر الواتساب 🚀</button>
         </div>
     </div>
 
@@ -844,6 +942,9 @@
         let selectedLocationName = '';
         let selectedPaymentMethod = '';
 
+        // متغيرات الدردشة
+        let currentChatUser = localStorage.getItem('um_chat_user') || '';
+
         db.collection("storeData").doc("debts").onSnapshot((doc) => {
             if (doc.exists) {
                 debtsData = doc.data();
@@ -885,6 +986,41 @@
             if(pLoader) pLoader.style.display = 'none';
             renderProducts(activeCategory);
             renderAdminProductsListModal();
+        });
+
+        // الاستماع لرسائل الدردشة المباشرة من السحابة مرتبة تصاعدياً حسب الوقت
+        db.collection("storeChat").orderBy("timestamp", "asc").onSnapshot((snapshot) => {
+            const list = document.getElementById('chatMessagesList');
+            const chatLoader = document.getElementById('chatLoader');
+            if(chatLoader) chatLoader.style.display = 'none';
+            
+            if(!list) return;
+            // الحفاظ على اللودر أو مسحه ثم إضافة الرسائل
+            let messagesHTML = '';
+            
+            if(snapshot.empty) {
+                messagesHTML = `<p style="text-align: center; color: var(--text-muted); margin-top: 20px; font-size: 12px;">ما في رسائل بعد، ابدأ الدردشة الآن! 💬</p>`;
+            } else {
+                snapshot.forEach(doc => {
+                    const msg = doc.data();
+                    const isMine = msg.sender === currentChatUser;
+                    const bubbleClass = isMine ? 'mine' : 'others';
+                    
+                    messagesHTML += `
+                        <div class="chat-bubble ${bubbleClass}">
+                            <div style="font-weight: 700; font-size: 11px; color: ${isMine ? '#0369A1' : 'var(--primary-dark)'}; margin-bottom: 2px;">${msg.sender}</div>
+                            <div>${msg.text}</div>
+                            <div class="chat-meta">
+                                <span>${msg.timeString || ''}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            // نخلي اللودر موجود لو الحوائج فارغة، وإلا نعرض المحتوى
+            list.innerHTML = messagesHTML;
+            list.scrollTop = list.scrollHeight;
         });
 
         function renderCategories() {
@@ -1033,6 +1169,82 @@
                 document.body.style.overflow = '';
                 document.body.style.position = '';
                 document.body.style.width = '';
+            }
+        }
+
+        // دوال نظام الدردشة
+        let selectedChatIdentityName = '';
+
+        function toggleChat() {
+            const drawer = document.getElementById('chatDrawer');
+            drawer.classList.toggle('active');
+            if (drawer.classList.contains('active')) {
+                document.body.style.overflow = 'hidden';
+                document.body.style.position = 'fixed';
+                document.body.style.width = '100%';
+                checkChatIdentityState();
+            } else {
+                document.body.style.overflow = '';
+                document.body.style.position = '';
+                document.body.style.width = '';
+            }
+        }
+
+        function checkChatIdentityState() {
+            if (currentChatUser) {
+                document.getElementById('chatAuthBox').style.display = 'none';
+                document.getElementById('chatMainBox').style.display = 'flex';
+                document.getElementById('currentChatUserLabel').innerText = currentChatUser;
+            } else {
+                document.getElementById('chatAuthBox').style.display = 'block';
+                document.getElementById('chatMainBox').style.display = 'none';
+            }
+        }
+
+        function selectChatIdentity(name) {
+            selectedChatIdentityName = name;
+            document.querySelectorAll('#chatIdentityChips .option-chip').forEach(c => c.classList.remove('selected'));
+            event.target.classList.add('selected');
+        }
+
+        function confirmChatIdentity() {
+            if(!selectedChatIdentityName) { alert('الرجاء اختيار اسمك من القائمة أولاً!'); return; }
+            currentChatUser = selectedChatIdentityName;
+            localStorage.setItem('um_chat_user', currentChatUser);
+            checkChatIdentityState();
+        }
+
+        function changeChatIdentity() {
+            currentChatUser = '';
+            localStorage.removeItem('um_chat_user');
+            selectedChatIdentityName = '';
+            document.querySelectorAll('#chatIdentityChips .option-chip').forEach(c => c.classList.remove('selected'));
+            checkChatIdentityState();
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chatMessageInput');
+            const text = input.value.trim();
+            if(!text) return;
+
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+
+            db.collection("storeChat").add({
+                sender: currentChatUser,
+                text: text,
+                timeString: timeString,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                input.value = '';
+            }).catch(err => {
+                alert('فشل إرسال الرسالة، تأكد من اتصال الإنترنت.');
+            });
+        }
+
+        function handleChatKeyPress(e) {
+            if(e.key === 'Enter') {
+                sendChatMessage();
             }
         }
 
