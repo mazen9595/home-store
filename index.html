@@ -722,7 +722,7 @@
 
         <!-- تذييل الموقع على طراز إصدارات الألعاب البرمجية -->
         <div style="text-align: center; padding: 20px 15px 10px 15px; font-size: 11px; color: var(--text-muted); border-top: 1px dashed #E2E8F0; margin-top: 30px;">
-            بقالة أم محمد &bull; الإصدار البرمجي: <strong style="color: var(--primary);">v1.9.2-patch.0</strong> 🎮
+            بقالة أم محمد &bull; الإصدار البرمجي: <strong style="color: var(--primary);">v1.9.3-patch.0</strong> 🎮
         </div>
 
     </div>
@@ -749,7 +749,7 @@
         </div>
     </div>
 
-    <!-- درج سجل الطلبات العام (متاح للكل) -->
+    <!-- درج سجل الطلبات العام (متاح للكل مع تتبع الحالة) -->
     <div class="drawer" id="ordersHistoryDrawer">
         <div class="drawer-header">
             <h2>سجل الطلبات العام 📋</h2>
@@ -1013,6 +1013,7 @@
         // متغيرات الدردشة
         let currentChatUser = localStorage.getItem('um_chat_user') || '';
         let cachedChatSnapshot = null;
+        let cachedOrdersSnapshot = null;
 
         db.collection("storeData").doc("debts").onSnapshot((doc) => {
             if (doc.exists) {
@@ -1059,6 +1060,7 @@
 
         // الاستماع لسجل الطلبات العام من السحابة مترتباً تصاعدياً (الجديد تحت)
         db.collection("storeOrders").orderBy("timestamp", "asc").onSnapshot((snapshot) => {
+            cachedOrdersSnapshot = snapshot;
             renderOrdersHistory(snapshot);
         });
 
@@ -1072,17 +1074,33 @@
             } else {
                 snapshot.forEach(doc => {
                     const order = doc.data();
+                    const orderId = doc.id;
+                    const orderStatus = order.status || 'غير متم ⏳';
+                    const isCompleted = orderStatus.includes('أتممت');
                     const orderJson = JSON.stringify(order).replace(/"/g, '&quot;');
+                    
+                    let adminStatusAction = '';
+                    if (isUserAdmin) {
+                        const nextStatus = isCompleted ? 'غير متم ⏳' : 'أتممت الطلب ✅';
+                        adminStatusAction = `<button onclick="event.stopPropagation(); toggleOrderStatus('${orderId}', '${nextStatus}')" style="background: ${isCompleted ? '#FEE2E2' : '#D1FAE5'}; color: ${isCompleted ? '#991B1B' : '#065F46'}; border: none; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer;">🔄 تغيير إلى: ${nextStatus}</button>`;
+                    }
+
                     html += `
-                        <div class="order-history-card" onclick='openOrderDetails(${orderJson})'>
+                        <div class="order-history-card" onclick='openOrderDetails(${orderJson}, "${orderId}")'>
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                                 <strong style="color: var(--primary-dark);">👤 ${order.buyer}</strong>
                                 <span style="font-size: 11px; color: var(--text-muted);">${order.orderTime || ''}</span>
                             </div>
-                            <div style="font-size: 12px; color: var(--text-main); margin-bottom: 4px;">
+                            <div style="font-size: 12px; color: var(--text-main); margin-bottom: 6px;">
                                 📍 المكان: <strong>${order.location}</strong> | الدفع: <strong>${order.paymentMethod}</strong>
                             </div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-size: 11px; font-weight: 700; background: ${isCompleted ? '#ECFDF5' : '#FEF3C7'}; color: ${isCompleted ? '#047857' : '#B45309'}; padding: 2px 8px; border-radius: 6px;">
+                                    الحالة: ${orderStatus}
+                                </span>
+                                ${adminStatusAction}
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; border-top: 1px dashed #E2E8F0; padding-top: 6px;">
                                 <span style="color: var(--text-muted);">إجمالي المبلغ: <span style="color: var(--primary);">${order.totalAmount} ريال</span></span>
                                 <span style="color: #0984E3; font-size: 11px;">اضغط لعرض التفاصيل 🔍</span>
                             </div>
@@ -1091,6 +1109,21 @@
                 });
             }
             list.innerHTML = html;
+        }
+
+        function toggleOrderStatus(orderId, newStatus) {
+            if (!isUserAdmin) {
+                alert('عذراً، هذه الصلاحية للإداري فقط 🚫 يرجى فتح لوحة الإدارة وإدخال كلمة المرور أولاً.');
+                return;
+            }
+            db.collection("storeOrders").doc(orderId).update({
+                status: newStatus
+            }).then(() => {
+                console.log("تم تحديث حالة الطلب سحابياً بنجاح");
+            }).catch(error => {
+                console.error("خطأ في تحديث حالة الطلب:", error);
+                alert('حدث خطأ أثناء تحديث الحالة.');
+            });
         }
 
         function toggleOrdersHistory() {
@@ -1107,7 +1140,7 @@
             }
         }
 
-        function openOrderDetails(order) {
+        function openOrderDetails(order, orderId) {
             const content = document.getElementById('orderDetailsContent');
             let itemsHtml = '';
             if(order.items && order.items.length > 0) {
@@ -1116,12 +1149,28 @@
                 });
             }
 
+            const orderStatus = order.status || 'غير متم ⏳';
+            const isCompleted = orderStatus.includes('أتممت');
+            
+            let modalAdminAction = '';
+            if (isUserAdmin) {
+                const nextStatus = isCompleted ? 'غير متم ⏳' : 'أتممت الطلب ✅';
+                modalAdminAction = `
+                    <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #E2E8F0; text-align: center;">
+                        <button onclick="toggleOrderStatus('${orderId}', '${nextStatus}'); closeOrderDetailsModalBtn();" style="background: ${isCompleted ? '#D63031' : '#00B4D8'}; color: white; border: none; padding: 10px 15px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; width: 100%;">
+                            🔄 تبديل الحالة إلى (${nextStatus})
+                        </button>
+                    </div>
+                `;
+            }
+
             content.innerHTML = `
                 <div style="background: #F8FAFC; padding: 12px; border-radius: 12px; border: 1px solid #E2E8F0; margin-bottom: 12px;">
                     <p style="margin-bottom: 6px;">👤 <strong>الطالب:</strong> ${order.buyer}</p>
                     <p style="margin-bottom: 6px;">📍 <strong>المكان:</strong> ${order.location}</p>
                     <p style="margin-bottom: 6px;">💳 <strong>طريقة الدفع:</strong> ${order.paymentMethod}</p>
                     <p style="margin-bottom: 6px;">⏰ <strong>وقت الطلب:</strong> ${order.orderTime || 'غير متوفر'}</p>
+                    <p style="margin-bottom: 0;">📌 <strong>حالة الطلب:</strong> <span style="color: ${isCompleted ? '#047857' : '#B45309'}; font-weight: 700;">${orderStatus}</span></p>
                 </div>
                 <p style="font-weight: 700; margin-bottom: 6px; color: var(--text-main);">📋 المنتجات المطلوبة:</p>
                 <ul style="padding-right: 20px; margin-bottom: 15px; color: var(--text-muted);">
@@ -1130,6 +1179,7 @@
                 <div style="text-align: center; font-size: 16px; font-weight: 900; color: var(--primary); padding-top: 10px; border-top: 1px dashed #E2E8F0;">
                     المجموع الكلي: ${order.totalAmount} ريال
                 </div>
+                ${modalAdminAction}
             `;
             document.getElementById('orderDetailsModal').classList.add('active');
         }
@@ -1536,6 +1586,7 @@
                 items: orderItemsArray,
                 totalAmount: total,
                 orderTime: dateString,
+                status: 'غير متم ⏳',
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 console.log("تم حفظ سجل الطلب سحابياً بنجاح");
@@ -1602,6 +1653,7 @@
                 renderAdminCategoriesList();
                 renderProducts(activeCategory);
                 if (cachedChatSnapshot) renderChatMessages(cachedChatSnapshot);
+                if (cachedOrdersSnapshot) renderOrdersHistory(cachedOrdersSnapshot);
                 alert('تم فتح لوحة إدارة المتجر بنجاح ✅');
             } else {
                 alert('كلمة المرور غير صحيحة! ❌');
