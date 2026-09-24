@@ -667,7 +667,7 @@
         <header>
             <div class="store-title">
                 <h1>بقالة أم محمد 🛒</h1>
-                <p>توصيل سريع لجميع الغرف1.5</p>
+                <p>توصيل سريع لجميع الغرف1.6</p>
             </div>
             <div class="header-actions">
                 <button class="icon-btn" onclick="toggleChat()" title="دردشة العائلة">
@@ -781,7 +781,7 @@
             <div class="selection-section">
                 <label>👤 مين اللي طالب؟ (اختر اسمك):</label>
                 <div class="chips-grid" id="buyerChips">
-                    <div class="option-chip" onclick="selectBuyer('بابa')">بابا</div>
+                    <div class="option-chip" onclick="selectBuyer('بابا')">بابا</div>
                     <div class="option-chip" onclick="selectBuyer('ماما')">ماما</div>
                     <div class="option-chip" onclick="selectBuyer('مازن')">مازن</div>
                     <div class="option-chip" onclick="selectBuyer('رتال')">رتال</div>
@@ -951,7 +951,7 @@
         let isUserAdmin = false;
         let activeCategory = 'all';
 
-        const familyMembers = ['بابا', 'ماما', 'مازن', 'رتال', 'مهاب', 'الدعم'];
+        const familyMembers = ['بابا', 'ماما', 'مازن', 'رتال', 'مهاب''];
         let cart = [];
         let debtsData = {};
 
@@ -963,6 +963,7 @@
 
         // متغيرات الدردشة
         let currentChatUser = localStorage.getItem('um_chat_user') || '';
+        let cachedChatSnapshot = null;
 
         db.collection("storeData").doc("debts").onSnapshot((doc) => {
             if (doc.exists) {
@@ -1009,6 +1010,11 @@
 
         // الاستماع لرسائل الدردشة المباشرة من السحابة مرتبة تصاعدياً حسب الوقت
         db.collection("storeChat").orderBy("timestamp", "asc").onSnapshot((snapshot) => {
+            cachedChatSnapshot = snapshot;
+            renderChatMessages(snapshot);
+        });
+
+        function renderChatMessages(snapshot) {
             const list = document.getElementById('chatMessagesList');
             const chatLoader = document.getElementById('chatLoader');
             if(chatLoader) chatLoader.style.display = 'none';
@@ -1030,11 +1036,18 @@
                     } else if (isMine) {
                         bubbleClass = 'mine';
                     }
+
+                    // زر حذف الرسالة يظهر للإداري فقط
+                    let deleteBtnHTML = '';
+                    if (isUserAdmin) {
+                        deleteBtnHTML = `<button onclick="deleteChatMessage('${doc.id}')" style="background:none; border:none; color:red; cursor:pointer; font-size:11px; padding:0; font-weight:700;" title="حذف الرسالة">🗑️ حذف</button>`;
+                    }
                     
                     messagesHTML += `
                         <div class="chat-bubble ${bubbleClass}">
-                            <div style="font-weight: 700; font-size: 11px; color: ${isSupport ? '#78350F' : (isMine ? '#0369A1' : 'var(--primary-dark)')}; margin-bottom: 2px;">
-                                ${isSupport ? '👑 ' : ''}${msg.sender}
+                            <div style="font-weight: 700; font-size: 11px; color: ${isSupport ? '#78350F' : (isMine ? '#0369A1' : 'var(--primary-dark)')}; margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center;">
+                                <span>${isSupport ? '👑 ' : ''}${msg.sender}</span>
+                                ${deleteBtnHTML}
                             </div>
                             <div>${msg.text}</div>
                             <div class="chat-meta">
@@ -1047,7 +1060,22 @@
             
             list.innerHTML = messagesHTML;
             list.scrollTop = list.scrollHeight;
-        });
+        }
+
+        // دالة حذف رسالة الشات (مخصصة للإداري فقط)
+        function deleteChatMessage(msgId) {
+            if (!isUserAdmin) {
+                alert('عذراً، هذه الصلاحية للإداري فقط 🚫');
+                return;
+            }
+            if (confirm('هل أنت متأكد من حذف هذه الرسالة نهائياً من السحابة؟')) {
+                db.collection("storeChat").doc(msgId).delete().then(() => {
+                    // سيتم التحديث تلقائياً عبر الـ onSnapshot
+                }).catch(err => {
+                    alert('فشل حذف الرسالة، تأكد من الاتصال.');
+                });
+            }
+        }
 
         function renderCategories() {
             const container = document.getElementById('categoriesContainer');
@@ -1446,6 +1474,7 @@
                 renderAdminProductsListModal();
                 renderAdminCategoriesList();
                 renderProducts(activeCategory);
+                if (cachedChatSnapshot) renderChatMessages(cachedChatSnapshot); // تحديث الشات فوراً لإظهار أزرار الحذف
                 alert('تم فتح لوحة إدارة المتجر بنجاح ✅');
             } else {
                 alert('كلمة المرور غير صحيحة! ❌');
