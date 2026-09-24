@@ -651,7 +651,7 @@
         <header>
             <div class="store-title">
                 <h1>بقالة أم محمد 🛒</h1>
-                <p>توصيل سريع لجميع الغرف1.2</p>
+                <p>توصيل سريع لجميع الغرف1.3</p>
             </div>
             <div class="header-actions">
                 <button class="icon-btn" onclick="toggleChat()" title="دردشة العائلة">
@@ -997,7 +997,6 @@
             if(chatLoader) chatLoader.style.display = 'none';
             
             if(!list) return;
-            // الحفاظ على اللودر أو مسحه ثم إضافة الرسائل
             let messagesHTML = '';
             
             if(snapshot.empty) {
@@ -1020,7 +1019,6 @@
                 });
             }
             
-            // نخلي اللودر موجود لو الحوائج فارغة، وإلا نعرض المحتوى
             list.innerHTML = messagesHTML;
             list.scrollTop = list.scrollHeight;
         });
@@ -1321,11 +1319,37 @@
 
             let orderText = `🚨 *طلب جديد لبقالة أم محمد!*\n\n👤 الطالب: *${selectedBuyerName}*\n📍 المكان: *${selectedLocationName}*\n💳 طريقة الدفع: *${selectedPaymentMethod}*\n\n📋 *تفاصيل الطلب:*\n`;
             let total = 0;
+            let orderItemsArray = [];
+            
             cart.forEach(item => {
                 orderText += `• ${item.name} (عدد: ${item.qty}) = ${item.price * item.qty} ريال\n`;
                 total += item.price * item.qty;
+                orderItemsArray.push({
+                    name: item.name,
+                    price: item.price,
+                    qty: item.qty,
+                    emoji: item.emoji
+                });
             });
             orderText += `\n💰 *المجموع الكلي: ${total} ريال*`;
+
+            // حفظ الطلب سحابياً فقط في مجموعة storeOrders
+            const now = new Date();
+            const dateString = now.toLocaleDateString('ar-SA') + ' ' + now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+
+            db.collection("storeOrders").add({
+                buyer: selectedBuyerName,
+                location: selectedLocationName,
+                paymentMethod: selectedPaymentMethod,
+                items: orderItemsArray,
+                totalAmount: total,
+                orderTime: dateString,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => {
+                console.log("تم حفظ الطلب سحابياً بنجاح");
+            }).catch(error => {
+                console.error("خطأ في حفظ الطلب سحابياً: ", error);
+            });
 
             if(selectedPaymentMethod.includes('دين')) {
                 debtsData[selectedBuyerName] = (debtsData[selectedBuyerName] || 0) + total;
@@ -1468,7 +1492,7 @@
         function saveProductToCloud() {
             const editId = document.getElementById('editProductId').value;
             const name = document.getElementById('newProdName').value.trim();
-            const price = parseFloat(document.getElementById('newProdPrice').value);
+            const price = parseFloat(document.getElementById('newProdPrice5').value || document.getElementById('newProdPrice').value);
             const category = document.getElementById('newProdCat').value;
             const emoji = document.getElementById('newProdEmoji').value.trim() || '🛒';
             const desc = document.getElementById('newProdDesc').value.trim() || '';
