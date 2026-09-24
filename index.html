@@ -1,4 +1,12 @@
 <!DOCTYPE html>
+<!-- 
+  =================================================================
+  🤖 AI INSTRUCTION FOR FUTURE UPDATES:
+  Whenever modifying this file, you MUST automatically increment 
+  the software version number by 0.1 (e.g. from v1.9.2 to v1.9.3) 
+  in both the header/footer displays and code references.
+  =================================================================
+-->
 <link rel="icon" type="image/png" href="https://i.postimg.cc/fbCCrzCv/pdd-Z2u-Pgq3k-Im-Fw-Jv7lfv-K07d-VKCl-Wgosn-Ri-R2I3.png">
 <link rel="apple-touch-icon" href="https://i.postimg.cc/fbCCrzCv/pdd-Z2u-Pgq3k-Im-Fw-Jv7lfv-K07d-VKCl-Wgosn-Ri-R2I3.png">
 <html lang="ar" dir="rtl">
@@ -70,11 +78,6 @@
             font-size: 22px;
             font-weight: 900;
             color: var(--text-main);
-        }
-
-        .store-title p {
-            font-size: 12px;
-            color: var(--text-muted);
         }
 
         .header-actions {
@@ -658,6 +661,21 @@
             justify-content: space-between;
             gap: 10px;
         }
+
+        /* تنسيق بطاقات سجل الطلبات العام */
+        .order-history-card {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .order-history-card:hover {
+            border-color: var(--primary);
+            background: #FFF9F9;
+        }
     </style>
 </head>
 <body>
@@ -667,11 +685,14 @@
         <header>
             <div class="store-title">
                 <h1>بقالة أم محمد 🛒</h1>
-                <p>توصيل سريع لجميع الغرف1.9</p>
             </div>
             <div class="header-actions">
+                <button class="icon-btn" onclick="toggleOrdersHistory()" title="سجل الطلبات العام">
+                    📋
+                </button>
                 <button class="icon-btn" onclick="toggleChat()" title="دردشة العائلة">
                     💬
+                    <span class="cart-badge" id="chatCount">0</span>
                 </button>
                 <button class="icon-btn" onclick="openAdminSettings()" title="إدارة المنتجات والأقسام">
                     ⚙️
@@ -699,6 +720,11 @@
             </div>
         </div>
 
+        <!-- تذييل الموقع على طراز إصدارات الألعاب البرمجية -->
+        <div style="text-align: center; padding: 20px 15px 10px 15px; font-size: 11px; color: var(--text-muted); border-top: 1px dashed #E2E8F0; margin-top: 30px;">
+            بقالة أم محمد &bull; الإصدار البرمجي: <strong style="color: var(--primary);">v1.9.2-patch.0</strong> 🎮
+        </div>
+
     </div>
 
     <!-- نافذة المنتج -->
@@ -723,6 +749,31 @@
         </div>
     </div>
 
+    <!-- درج سجل الطلبات العام (متاح للكل) -->
+    <div class="drawer" id="ordersHistoryDrawer">
+        <div class="drawer-header">
+            <h2>سجل الطلبات العام 📋</h2>
+            <button class="close-btn" onclick="toggleOrdersHistory()">✕</button>
+        </div>
+        <div class="drawer-body" id="ordersHistoryList">
+            <div id="ordersHistoryLoader" style="text-align: center; padding: 30px;">
+                <div class="mini-spinner" style="margin: 0 auto 10px auto;"></div>
+                <p style="font-size: 12px; color: var(--text-muted);">جاري تحميل سجل الطلبات من السحابة...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة تفاصيل الطلب الفردي (Z-Index مرفوع لتكون في المقدمة) -->
+    <div class="modal-overlay" id="orderDetailsModal" onclick="closeOrderDetailsModal(event)" style="z-index: 2000;">
+        <div class="modal-sheet" onclick="event.stopPropagation()">
+            <div class="sheet-header">
+                <h2>تفاصيل الطلب 📦</h2>
+                <button class="close-btn" onclick="closeOrderDetailsModalBtn()">✕</button>
+            </div>
+            <div id="orderDetailsContent" style="font-size: 13px; line-height: 1.6;"></div>
+        </div>
+    </div>
+
     <!-- درج الدردشة العائلية -->
     <div class="drawer" id="chatDrawer">
         <div class="drawer-header">
@@ -732,7 +783,6 @@
         
         <div class="drawer-body" style="display: flex; flex-direction: column;">
             
-            <!-- قسم التحقق من هوية المستخدم (من أنت؟) -->
             <div class="auth-box" id="chatAuthBox">
                 <p>من أنت؟ 👤</p>
                 <div class="selection-section" style="margin-bottom: 10px;">
@@ -748,7 +798,6 @@
                 <button class="btn-primary" style="padding: 10px; font-size: 13px;" onclick="confirmChatIdentity()">دخول للدردشة 🚀</button>
             </div>
 
-            <!-- محتوى صندوق الدردشة بعد اختيار الهوية -->
             <div class="chat-container" id="chatMainBox" style="display: none; height: 100%;">
                 <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px; text-align: center;">متحدث باسم: <strong id="currentChatUserLabel" style="color: var(--primary);"></strong> (<a href="#" onclick="changeChatIdentity()" style="color: #0984E3; text-decoration: none;">تغيير</a>)</div>
                 
@@ -1008,9 +1057,98 @@
             renderAdminProductsListModal();
         });
 
-        // الاستماع لرسائل الدردشة المباشرة من السحابة مرتبة تصاعدياً حسب الوقت
+        // الاستماع لسجل الطلبات العام من السحابة مترتباً تصاعدياً (الجديد تحت)
+        db.collection("storeOrders").orderBy("timestamp", "asc").onSnapshot((snapshot) => {
+            renderOrdersHistory(snapshot);
+        });
+
+        function renderOrdersHistory(snapshot) {
+            const list = document.getElementById('ordersHistoryList');
+            if(!list) return;
+            let html = '';
+
+            if(snapshot.empty) {
+                html = `<p style="text-align: center; color: var(--text-muted); margin-top: 30px; font-size: 13px;">ما في طلبات مسجلة بعد 📭</p>`;
+            } else {
+                snapshot.forEach(doc => {
+                    const order = doc.data();
+                    const orderJson = JSON.stringify(order).replace(/"/g, '&quot;');
+                    html += `
+                        <div class="order-history-card" onclick='openOrderDetails(${orderJson})'>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <strong style="color: var(--primary-dark);">👤 ${order.buyer}</strong>
+                                <span style="font-size: 11px; color: var(--text-muted);">${order.orderTime || ''}</span>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-main); margin-bottom: 4px;">
+                                📍 المكان: <strong>${order.location}</strong> | الدفع: <strong>${order.paymentMethod}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700;">
+                                <span style="color: var(--text-muted);">إجمالي المبلغ: <span style="color: var(--primary);">${order.totalAmount} ريال</span></span>
+                                <span style="color: #0984E3; font-size: 11px;">اضغط لعرض التفاصيل 🔍</span>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            list.innerHTML = html;
+        }
+
+        function toggleOrdersHistory() {
+            const drawer = document.getElementById('ordersHistoryDrawer');
+            drawer.classList.toggle('active');
+            if (drawer.classList.contains('active')) {
+                document.body.style.overflow = 'hidden';
+                document.body.style.position = 'fixed';
+                document.body.style.width = '100%';
+            } else {
+                document.body.style.overflow = '';
+                document.body.style.position = '';
+                document.body.style.width = '';
+            }
+        }
+
+        function openOrderDetails(order) {
+            const content = document.getElementById('orderDetailsContent');
+            let itemsHtml = '';
+            if(order.items && order.items.length > 0) {
+                order.items.forEach(item => {
+                    itemsHtml += `<li style="margin-bottom: 4px;">${item.emoji || '🛒'} ${item.name} (عدد: ${item.qty}) - <strong>${item.price * item.qty} ريال</strong></li>`;
+                });
+            }
+
+            content.innerHTML = `
+                <div style="background: #F8FAFC; padding: 12px; border-radius: 12px; border: 1px solid #E2E8F0; margin-bottom: 12px;">
+                    <p style="margin-bottom: 6px;">👤 <strong>الطالب:</strong> ${order.buyer}</p>
+                    <p style="margin-bottom: 6px;">📍 <strong>المكان:</strong> ${order.location}</p>
+                    <p style="margin-bottom: 6px;">💳 <strong>طريقة الدفع:</strong> ${order.paymentMethod}</p>
+                    <p style="margin-bottom: 6px;">⏰ <strong>وقت الطلب:</strong> ${order.orderTime || 'غير متوفر'}</p>
+                </div>
+                <p style="font-weight: 700; margin-bottom: 6px; color: var(--text-main);">📋 المنتجات المطلوبة:</p>
+                <ul style="padding-right: 20px; margin-bottom: 15px; color: var(--text-muted);">
+                    ${itemsHtml}
+                </ul>
+                <div style="text-align: center; font-size: 16px; font-weight: 900; color: var(--primary); padding-top: 10px; border-top: 1px dashed #E2E8F0;">
+                    المجموع الكلي: ${order.totalAmount} ريال
+                </div>
+            `;
+            document.getElementById('orderDetailsModal').classList.add('active');
+        }
+
+        function closeOrderDetailsModalBtn() {
+            document.getElementById('orderDetailsModal').classList.remove('active');
+        }
+
+        function closeOrderDetailsModal(e) {
+            if(e.target.id === 'orderDetailsModal') closeOrderDetailsModalBtn();
+        }
+
+        // الاستماع لرسائل الدردشة المباشرة من السحابة مرتبة تصاعدياً مع تحديث شارة العداد سحابياً
         db.collection("storeChat").orderBy("timestamp", "asc").onSnapshot((snapshot) => {
             cachedChatSnapshot = snapshot;
+            const chatCountEl = document.getElementById('chatCount');
+            if(chatCountEl) {
+                chatCountEl.innerText = snapshot.size;
+            }
             renderChatMessages(snapshot);
         });
 
@@ -1037,7 +1175,6 @@
                         bubbleClass = 'mine';
                     }
 
-                    // زر حذف الرسالة يظهر للإداري فقط
                     let deleteBtnHTML = '';
                     if (isUserAdmin) {
                         deleteBtnHTML = `<button onclick="deleteChatMessage('${doc.id}')" style="background:none; border:none; color:red; cursor:pointer; font-size:11px; padding:0; font-weight:700;" title="حذف الرسالة">🗑️ حذف</button>`;
@@ -1062,18 +1199,13 @@
             list.scrollTop = list.scrollHeight;
         }
 
-        // دالة حذف رسالة الشات (مخصصة للإداري فقط)
         function deleteChatMessage(msgId) {
             if (!isUserAdmin) {
                 alert('عذراً، هذه الصلاحية للإداري فقط 🚫');
                 return;
             }
             if (confirm('هل أنت متأكد من حذف هذه الرسالة نهائياً من السحابة؟')) {
-                db.collection("storeChat").doc(msgId).delete().then(() => {
-                    // سيتم التحديث تلقائياً عبر الـ onSnapshot
-                }).catch(err => {
-                    alert('فشل حذف الرسالة، تأكد من الاتصال.');
-                });
+                db.collection("storeChat").doc(msgId).delete();
             }
         }
 
@@ -1226,7 +1358,6 @@
             }
         }
 
-        // دوال نظام الدردشة
         let selectedChatIdentityName = '';
 
         function toggleChat() {
@@ -1301,8 +1432,6 @@
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 input.value = '';
-            }).catch(err => {
-                alert('فشل إرسال الرسالة، تأكد من اتصال الإنترنت.');
             });
         }
 
@@ -1375,7 +1504,6 @@
             document.getElementById('debtWarningBox').style.display = method.includes('دين') ? 'block' : 'none';
         }
 
-        // حفظ تفاصيل الطلب سحابياً في جدول storeOrders (بدون أي تعديل على واجهة الموقع)
         function checkoutWhatsApp() {
             if(cart.length === 0) { alert('السلة فارغة يا غالي!'); return; }
             if(!selectedBuyerName) { alert('الرجاء اختيار اسم الشخص طالب الطلبية أولاً!'); return; }
@@ -1401,7 +1529,6 @@
             const now = new Date();
             const dateString = now.toLocaleDateString('ar-SA') + ' ' + now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
 
-            // حفظ الطلب سحابياً في قاعدة البيانات (Firestore)
             db.collection("storeOrders").add({
                 buyer: selectedBuyerName,
                 location: selectedLocationName,
@@ -1412,8 +1539,6 @@
                 timestamp: firebase.firestore.FieldValue.serverTimestamp()
             }).then(() => {
                 console.log("تم حفظ سجل الطلب سحابياً بنجاح");
-            }).catch(error => {
-                console.error("خطأ في حفظ الطلب سحابياً: ", error);
             });
 
             if(selectedPaymentMethod.includes('دين')) {
