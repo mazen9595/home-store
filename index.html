@@ -1075,7 +1075,7 @@
                 snapshot.forEach(doc => {
                     const order = doc.data();
                     const orderId = doc.id;
-                    const orderStatus = order.status || 'غير متم ⏳';
+                    const orderStatus = order.status || 'العميل في الانتضار ⏳';
                     const isCompleted = orderStatus.includes('أتممت');
                     const orderJson = JSON.stringify(order).replace(/"/g, '&quot;');
                     
