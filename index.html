@@ -5,16 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <!-- ============================================================
-     📌 ملاحظة الإصدار (Version Note)
-     ============================================================
-     كل مرة يتم فيها تحديث هذا الملف، يجب زيادة رقم الإصدار:
-        v2.0.0 → v2.0.1 → v2.0.2 → v2.0.3 → v2.0.4 ...
-     أو عند التحديثات الكبيرة:
-        v2.0.x → v2.1.0 → v2.2.0 → v3.0.0 ...
-     🔹 الإصدار الحالي: v2.0.1
-     🔹 آخر تحديث: إضافة إدارة الديون الكاملة (إضافة/خصم/تصفير) للمشرف فقط
+     📌 ملاحظة الإصدار
+     كل تحديث يزيد الرقم: v2.0.4 → v2.0.5 ...
+     🔹 الإصدار الحالي: v2.0.5
+     🔹 آخر تحديث: إشعارات الطلبات الجديدة في لوحة الإدارة
      ============================================================ -->
-<title>بقالة أم محمد v2.0.1</title>
+<title>بقالة أم محمد v2.0.5</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
@@ -23,16 +19,27 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800;900&display=swap" rel="stylesheet">
-
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
 <style>
   body { font-family:'Cairo',sans-serif; background:#f8fafc; user-select:none; }
   ::-webkit-scrollbar { width:6px; height:6px; }
   ::-webkit-scrollbar-track { background:#f1f5f9; }
   ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:9999px; }
+  @keyframes spin-slow { to { transform: rotate(360deg); } }
+  .spinner-ring { animation: spin-slow 0.9s linear infinite; }
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+    50% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+  }
+  .notif-pulse { animation: pulse-border 1.8s infinite; }
+  @keyframes bell-shake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-12deg); }
+    75% { transform: rotate(12deg); }
+  }
+  .bell-shake { animation: bell-shake 0.7s ease-in-out infinite; transform-origin: top center; }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-900 antialiased">
@@ -42,12 +49,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
   import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
   import { getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-  window.FirebaseSDK = {
-    initializeApp, getAuth, signInAnonymously,
-    getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot,
-    addDoc, updateDoc, deleteDoc, serverTimestamp
-  };
+  window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot, addDoc, updateDoc, deleteDoc, serverTimestamp };
   window.FirebaseSDKReady = true;
   window.dispatchEvent(new Event('firebase-sdk-ready'));
 </script>
@@ -56,38 +58,25 @@
 const { useState, useEffect, useRef, useMemo } = React;
 
 /* ============================================================
-   📌 رقم الإصدار الحالي (Current Version)
-   ============================================================
-   ⚠️ مهم: عند كل تعديل جديد، قم بتحديث هذا الرقم
-   ⚠️ وحدّث أيضاً الرقم في <title> وفي هيدر الموقع وفي الفوتر
-   🔹 الإصدار: v2.0.1
+   📌 رقم الإصدار
    ============================================================ */
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.0.5';
 
-/* ================== ثوابت ================== */
 const MOHAMMED_PHONE = '966505835077';
-
-const LOCATIONS = [
-  'غرفة مازن', 'غرفة رتال', 'غرفة مهاب', 'غرفة ماما وبابا',
-  'الصالة', 'الدور الأول', 'المطبخ', 'الملحق الخارجي', 'الحوش', 'السطح'
-];
-
+const LOCATIONS = ['غرفة مازن','غرفة رتال','غرفة مهاب','غرفة ماما وبابا','الصالة','الدور الأول','المطبخ','الملحق الخارجي','الحوش','السطح'];
 const PRIORITY_MEMBERS = ['بابا','ماما','مازن','رتال','مهاب'];
 const ALL_CHAT_USERS = ['بابا','ماما','مازن','رتال','مهاب','الدعم'];
-
 const ORDER_STATUSES = [
   { key:'العميل في الانتظار ⏳', icon:'⏳', label:'العميل في الانتظار' },
   { key:'جاري التجهيز 📦',      icon:'📦', label:'جاري التجهيز' },
   { key:'في الطريق 🚚',        icon:'🚚', label:'في الطريق للتوصيل' },
   { key:'أتممت الطلب ✅',        icon:'✅', label:'أتممت الطلب' },
 ];
-
 const PAYMENT_METHODS = [
-  { key:'دين 📒',    label:'دين', icon:'📒', btn:'btn-din' },
-  { key:'نقدي 💵',   label:'نقدي', icon:'💵', btn:'btn-brand' },
+  { key:'دين 📒', label:'دين', icon:'📒', btn:'btn-din' },
+  { key:'نقدي 💵', label:'نقدي', icon:'💵', btn:'btn-brand' },
   { key:'تحويل بنكي 🏦', label:'تحويل بنكي', icon:'🏦', btn:'btn-bank' },
 ];
-
 const BANNER_THEMES = [
   { id:'amber',   label:'ذهبي',    bgFrom:'#f59e0b', bgTo:'#b45309', text:'#1e293b' },
   { id:'emerald', label:'أخضر',    bgFrom:'#10b981', bgTo:'#065f46', text:'#ffffff' },
@@ -102,7 +91,6 @@ const BANNER_THEMES = [
   { id:'lime',    label:'ليموني',  bgFrom:'#84cc16', bgTo:'#3f6212', text:'#1e293b' },
   { id:'rose',    label:'وردي داكن',bgFrom:'#f43f5e', bgTo:'#881337', text:'#ffffff' },
 ];
-
 const SITE_THEMES = {
   emerald: { label:'أخضر',   headerFrom:'#065f46', headerVia:'#047857', headerTo:'#166534', primary:'#059669', primaryHover:'#047857', light:'#ecfdf5', text:'#065f46' },
   blue:    { label:'أزرق',   headerFrom:'#1e3a8a', headerVia:'#1d4ed8', headerTo:'#1e40af', primary:'#2563eb', primaryHover:'#1d4ed8', light:'#eff6ff', text:'#1e40af' },
@@ -117,10 +105,8 @@ const SITE_THEMES = {
   orange:  { label:'برتقالي',headerFrom:'#7c2d12', headerVia:'#ea580c', headerTo:'#9a3412', primary:'#f97316', primaryHover:'#ea580c', light:'#fff7ed', text:'#9a3412' },
   lime:    { label:'ليموني', headerFrom:'#3f6212', headerVia:'#65a30d', headerTo:'#4d7c0f', primary:'#84cc16', primaryHover:'#65a30d', light:'#f7fee7', text:'#4d7c0f' },
 };
-
 const COL = { DATA:'storeData', CHAT:'storeChat', ORDERS:'storeOrders' };
 
-/* ================== صوت ================== */
 const playSound = (type) => {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -129,71 +115,288 @@ const playSound = (type) => {
     if (type==='click') { osc.frequency.value=600; gain.gain.setValueAtTime(0.05,ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.00001,ctx.currentTime+0.1); osc.start(); osc.stop(ctx.currentTime+0.1); }
     else if (type==='cash') { osc.frequency.setValueAtTime(800,ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(1200,ctx.currentTime+0.15); gain.gain.setValueAtTime(0.1,ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.00001,ctx.currentTime+0.25); osc.start(); osc.stop(ctx.currentTime+0.25); }
     else if (type==='message') { osc.frequency.setValueAtTime(520,ctx.currentTime); osc.frequency.setValueAtTime(780,ctx.currentTime+0.08); gain.gain.setValueAtTime(0.08,ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.00001,ctx.currentTime+0.2); osc.start(); osc.stop(ctx.currentTime+0.2); }
+    else if (type==='alert') {
+      osc.frequency.setValueAtTime(880,ctx.currentTime);
+      osc.frequency.setValueAtTime(660,ctx.currentTime+0.15);
+      osc.frequency.setValueAtTime(880,ctx.currentTime+0.3);
+      gain.gain.setValueAtTime(0.12,ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.00001,ctx.currentTime+0.5);
+      osc.start(); osc.stop(ctx.currentTime+0.5);
+    }
   } catch(e) {}
 };
 
-/* ================== صورة مجهولة ================== */
 function AnonymousAvatar({ size = 48, tone = 'slate', className = '' }) {
   const bgColors = {
-    slate:   { bg:'#e2e8f0', fg:'#64748b' },
-    gray:    { bg:'#e5e7eb', fg:'#6b7280' },
-    zinc:    { bg:'#e4e4e7', fg:'#71717a' },
-    neutral: { bg:'#e5e5e5', fg:'#737373' },
-    stone:   { bg:'#e7e5e4', fg:'#78716c' },
-    amber:   { bg:'#fef3c7', fg:'#d97706' },
+    slate:{bg:'#e2e8f0',fg:'#64748b'}, gray:{bg:'#e5e7eb',fg:'#6b7280'}, zinc:{bg:'#e4e4e7',fg:'#71717a'},
+    neutral:{bg:'#e5e5e5',fg:'#737373'}, stone:{bg:'#e7e5e4',fg:'#78716c'}, amber:{bg:'#fef3c7',fg:'#d97706'},
   };
-  const colors = bgColors[tone] || bgColors.slate;
+  const c = bgColors[tone] || bgColors.slate;
   return (
     <div className={`rounded-full flex items-center justify-center overflow-hidden shrink-0 ${className}`}
-      style={{ width: size, height: size, backgroundColor: colors.bg }}>
-      <svg viewBox="0 0 24 24" fill={colors.fg} style={{ width: size * 0.7, height: size * 0.7 }}>
+      style={{ width: size, height: size, backgroundColor: c.bg }}>
+      <svg viewBox="0 0 24 24" fill={c.fg} style={{ width: size * 0.7, height: size * 0.7 }}>
         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
       </svg>
     </div>
   );
 }
 
-/* ================== ImageUploader ================== */
-function ImageUploader({ value, onChange, label = 'اختر صورة', maxSizeKB = 700 }) {
+function Spinner({ text = 'جارٍ التحميل من السحابة...' }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 gap-4">
+      <div className="relative w-16 h-16">
+        <div className="absolute inset-0 rounded-full border-4 border-slate-200"></div>
+        <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 spinner-ring"></div>
+      </div>
+      <p className="text-sm text-slate-500 font-bold">{text}</p>
+      <p className="text-[10px] text-slate-400">يتم الاتصال بـ Firebase...</p>
+    </div>
+  );
+}
+
+function AdminSection({ title, icon, badge, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+      <button onClick={() => { playSound('click'); setOpen(!open); }}
+        className="w-full flex items-center justify-between p-4 md:p-5 hover:bg-slate-50 transition active:bg-slate-100">
+        <div className="flex items-center gap-3">
+          <span className="text-xl md:text-2xl">{icon}</span>
+          <h3 className="font-black text-slate-800 text-sm md:text-base">{title}</h3>
+          {badge && <span className="text-[10px] bg-slate-100 text-slate-600 font-black px-2 py-0.5 rounded-full">{badge}</span>}
+        </div>
+        <span className={`text-slate-400 text-xl transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+      </button>
+      {open && (<div className="px-4 md:px-5 pb-4 md:pb-5 border-t border-slate-100 pt-4 space-y-3">{children}</div>)}
+    </div>
+  );
+}
+
+function ImageUploader({ value, onChange, label = 'اختر صورة', maxDimension = 800, quality = 0.75, maxOutputKB = 500 }) {
   const fileRef = useRef(null);
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState('');
   const [error, setError] = useState('');
-  const handleFile = (e) => {
+
+  const compressImage = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const originalSize = file.size;
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) { height = Math.round((height * maxDimension) / width); width = maxDimension; }
+          else { width = Math.round((width * maxDimension) / height); height = maxDimension; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        let q = quality;
+        let dataUrl = canvas.toDataURL('image/jpeg', q);
+        while (dataUrl.length / 1024 > maxOutputKB && q > 0.3) { q -= 0.1; dataUrl = canvas.toDataURL('image/jpeg', q); }
+        let w2 = width, h2 = height, attempts = 0;
+        while (dataUrl.length / 1024 > maxOutputKB && attempts < 5) {
+          w2 = Math.round(w2 * 0.8); h2 = Math.round(h2 * 0.8);
+          canvas.width = w2; canvas.height = h2;
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w2, h2);
+          ctx.drawImage(img, 0, 0, w2, h2);
+          dataUrl = canvas.toDataURL('image/jpeg', q); attempts++;
+        }
+        resolve({ dataUrl, originalSize, newSize: dataUrl.length * 0.75, compressionRatio: Math.round((1 - (dataUrl.length * 0.75) / originalSize) * 100) });
+      };
+      img.onerror = () => reject(new Error('فشل تحميل الصورة'));
+      img.src = ev.target.result;
+    };
+    reader.onerror = () => reject(new Error('فشل قراءة الملف'));
+    reader.readAsDataURL(file);
+  });
+
+  const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setError('');
+    setError(''); setStatus('');
     if (!file.type.startsWith('image/')) { setError('الملف ليس صورة'); return; }
-    if (file.size > maxSizeKB * 1024) { setError(`حجم الصورة كبير (${Math.round(file.size/1024)}KB) - الحد ${maxSizeKB}KB`); return; }
-    setLoading(true);
-    const reader = new FileReader();
-    reader.onload = (ev) => { onChange(ev.target.result); setLoading(false); };
-    reader.onerror = () => { setError('فشل قراءة الملف'); setLoading(false); };
-    reader.readAsDataURL(file);
+    setLoading(true); setStatus('⏳ جارٍ ضغط الصورة...');
+    try {
+      const result = await compressImage(file);
+      setStatus(`✅ تم الضغط — من ${Math.round(result.originalSize/1024)}KB إلى ${Math.round(result.newSize/1024)}KB (توفير ${result.compressionRatio}%)`);
+      onChange(result.dataUrl);
+      setTimeout(() => setStatus(''), 4000);
+    } catch (err) { setError('فشل ضغط الصورة: ' + err.message); }
+    finally { setLoading(false); if (fileRef.current) fileRef.current.value = ''; }
   };
+
   return (
     <div className="space-y-2">
       {value ? (
         <div className="relative w-full h-32 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden">
           <img src={value} alt="preview" className="max-w-full max-h-full object-contain p-2" />
-          <button type="button" onClick={() => onChange('')} className="absolute top-1 left-1 bg-red-500 hover:bg-red-600 text-white w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold">✕</button>
+          <button type="button" onClick={() => { onChange(''); setStatus(''); }}
+            className="absolute top-1 left-1 bg-red-500 hover:bg-red-600 text-white w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold shadow-md">✕</button>
+          <span className="absolute bottom-1 right-1 bg-slate-900/70 text-white text-[9px] px-2 py-0.5 rounded-full font-bold">
+            {Math.round(value.length / 1024)} KB
+          </span>
         </div>
-      ) : (
-        <div className="w-full h-24 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-xs">لا صورة</div>
-      )}
+      ) : (<div className="w-full h-24 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 text-xs">لا صورة — اختر صورة وسيتم ضغطها تلقائياً</div>)}
       <input type="file" ref={fileRef} accept="image/*" onChange={handleFile} className="hidden" />
       <button type="button" onClick={() => fileRef.current?.click()} disabled={loading}
-        className={`w-full font-bold py-2.5 rounded-xl text-xs transition ${loading ? 'bg-slate-200 text-slate-400' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
-        {loading ? '⏳ جارٍ التحميل...' : '📷 ' + label}
+        className={`w-full font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2 ${
+          loading ? 'bg-slate-200 text-slate-400 cursor-wait' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 active:scale-95'
+        }`}>
+        {loading ? (<><span className="inline-block w-4 h-4 border-2 border-emerald-300 border-t-emerald-700 rounded-full spinner-ring"></span><span>جارٍ الضغط...</span></>) : (<>📷 {label}</>)}
       </button>
-      {value && !loading && <p className="text-[10px] text-emerald-600 text-center">✅ {Math.round(value.length/1024)} KB</p>}
-      {error && <p className="text-[10px] text-red-600 bg-red-50 p-2 rounded-lg text-center">{error}</p>}
+      {value && !loading && (
+        <div className="text-[10px] text-center space-y-0.5">
+          <p className="text-emerald-600 font-bold">✅ حجم الصورة: {Math.round(value.length / 1024)} KB</p>
+          <p className="text-slate-400">PNG, JPG, WEBP — يتم الضغط تلقائياً</p>
+        </div>
+      )}
+      {status && !loading && !error && (<div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] p-2 rounded-lg text-center font-bold">{status}</div>)}
+      {error && (<div className="bg-red-50 border border-red-200 text-red-700 text-[10px] p-2 rounded-lg text-center font-bold">⚠️ {error}</div>)}
     </div>
   );
 }
 
 /* ============================================================
-   📌 مكون التطبيق الرئيسي (Main App)
+   ✅ v2.0.5 — مكوّن إشعار الطلب الجديد
    ============================================================ */
+function NewOrderNotification({ order, onStatusChange, onDismiss, onComplete }) {
+  const currentIdx = ORDER_STATUSES.findIndex(s => s.key === order.status);
+  const timeStr = order.orderTime || '';
+
+  return (
+    <div className="notif-pulse relative bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 border-2 border-amber-400 rounded-3xl p-5 shadow-xl space-y-4">
+      {/* رأس الإشعار */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-14 h-14 bg-amber-500 rounded-2xl flex items-center justify-center text-3xl shadow-md">
+            <span className="bell-shake inline-block">🔔</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-black text-amber-900 text-lg md:text-xl">طلب جديد!</h3>
+              <span className="text-[10px] bg-amber-500 text-white font-black px-2.5 py-0.5 rounded-full">جديد</span>
+              <span className="text-[10px] bg-slate-900 text-white font-black px-2 py-0.5 rounded-md">#{order._id.slice(0,6)}</span>
+            </div>
+            <p className="text-xs text-amber-700 mt-0.5 font-bold">يحتاج إجراءً منك 👇</p>
+          </div>
+        </div>
+        <button
+          onClick={() => onDismiss(order._id)}
+          className="w-9 h-9 rounded-full bg-white border-2 border-amber-300 text-amber-700 hover:bg-amber-100 hover:text-amber-900 flex items-center justify-center font-black text-lg shadow-sm transition active:scale-95"
+          title="إخفاء الإشعار">
+          ✕
+        </button>
+      </div>
+
+      {/* تفاصيل الطلب */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-amber-200">
+          <div className="text-[10px] text-slate-500 font-bold">👤 صاحب الطلب</div>
+          <div className="font-black text-slate-900 text-sm mt-1">{order.buyer}</div>
+        </div>
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-amber-200">
+          <div className="text-[10px] text-slate-500 font-bold">📍 الموقع</div>
+          <div className="font-black text-purple-700 text-sm mt-1">{order.location || '—'}</div>
+        </div>
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-amber-200">
+          <div className="text-[10px] text-slate-500 font-bold">💳 الدفع · ⏰ الوقت</div>
+          <div className="font-black text-sm mt-1">
+            <span className={`text-[11px] px-2 py-0.5 rounded-md ${
+              (order.paymentMethod||'').includes('دين')?'bg-amber-100 text-amber-800':
+              (order.paymentMethod||'').includes('تحويل')?'bg-blue-100 text-blue-800':'bg-emerald-100 text-emerald-800'
+            }`}>{order.paymentMethod || 'نقدي'}</span>
+            <span className="text-slate-600 mr-2 text-xs">{timeStr}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* المنتجات */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-amber-200">
+        <div className="text-[10px] text-slate-500 font-bold mb-2">📦 المنتجات المطلوبة ({(order.items||[]).length})</div>
+        <div className="flex flex-wrap gap-2">
+          {(order.items||[]).map((it,i)=>(
+            <span key={i} className="bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold px-2.5 py-1 rounded-lg">
+              {it.emoji||'🛒'} {it.name} × {it.qty}
+              <span className="text-amber-700 mr-1">({(Number(it.price)||0).toFixed(2)} ر.س)</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* الإجمالي */}
+      <div className="bg-slate-900 text-white rounded-2xl p-3 flex items-center justify-between">
+        <span className="font-bold text-sm">💰 الإجمالي الكلي:</span>
+        <span className="font-black text-2xl text-amber-400">{(Number(order.totalAmount)||0).toFixed(2)} <span className="text-sm">ر.س</span></span>
+      </div>
+
+      {/* شريط التقدّم القابل للنقر */}
+      <div className="space-y-2">
+        <div className="text-[11px] text-amber-800 font-black flex items-center gap-1.5">
+          <span>📊</span> اضغط على أي مرحلة لتحديث حالة الطلب:
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {ORDER_STATUSES.map((st, i) => {
+            const passed = currentIdx === -1 ? false : i <= currentIdx;
+            const isCurrent = i === currentIdx;
+            return (
+              <button
+                key={st.key}
+                onClick={() => onStatusChange(order._id, st.key)}
+                className={`relative p-3 rounded-2xl border-2 text-center transition-all active:scale-95 ${
+                  isCurrent
+                    ? 'bg-amber-500 border-amber-600 shadow-md scale-[1.02]'
+                    : passed
+                      ? 'bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
+                }`}>
+                {isCurrent && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                    الآن
+                  </span>
+                )}
+                <div className={`h-1.5 rounded-full mb-1.5 ${
+                  isCurrent ? 'bg-white' : passed ? 'bg-emerald-500' : 'bg-slate-300'
+                }`}></div>
+                <span className={`text-[11px] block font-black leading-tight ${
+                  isCurrent ? 'text-white' : passed ? 'text-emerald-900' : 'text-slate-600'
+                }`}>
+                  {st.icon} {st.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* أزرار الإجراء */}
+      <div className="flex flex-wrap gap-2 pt-2 border-t-2 border-amber-200">
+        <button
+          onClick={() => onComplete(order._id)}
+          className="flex-1 min-w-[160px] bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3 rounded-2xl text-sm shadow-md transition active:scale-95 flex items-center justify-center gap-2">
+          <span className="text-xl">✅</span>
+          <span>أتممت الطلب</span>
+        </button>
+        <button
+          onClick={() => onStatusChange(order._id, 'في الطريق 🚚')}
+          className="flex-1 min-w-[140px] bg-purple-600 hover:bg-purple-700 text-white font-black py-3 rounded-2xl text-sm shadow-md transition active:scale-95 flex items-center justify-center gap-2">
+          <span className="text-lg">🚚</span>
+          <span>في الطريق</span>
+        </button>
+        <button
+          onClick={() => onStatusChange(order._id, 'ملغي ❌')}
+          className="bg-red-100 hover:bg-red-200 text-red-700 font-black py-3 px-4 rounded-2xl text-xs transition active:scale-95">
+          ❌ ملغي
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function GroceryApp() {
   const [activeTab, setActiveTab] = useState('products');
   const [identityModalOpen, setIdentityModalOpen] = useState(true);
@@ -215,6 +418,8 @@ function GroceryApp() {
   const [botConfig, setBotConfig] = useState({ enabled:true });
   const [siteThemeId, setSiteThemeId] = useState('emerald');
 
+  const [loadingStates, setLoadingStates] = useState({ products: true, ledger: true, chat: true, orders: true });
+
   const [cloudStatus, setCloudStatus] = useState('connecting');
   const [cloudMessage, setCloudMessage] = useState('جاري الاتصال...');
   const [dbInstance, setDbInstance] = useState(null);
@@ -231,10 +436,9 @@ function GroceryApp() {
   const [pinError, setPinError] = useState('');
   const [payModalMember, setPayModalMember] = useState(null);
   const [payAmountInput, setPayAmountInput] = useState('');
-
-  /* ✅ الإصدار الجديد: نافذة تعديل الديون (إضافة/خصم/تصفير) */
-  const [debtModal, setDebtModal] = useState(null); // { member, mode, amount }
-
+  const [debtModal, setDebtModal] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
   const [notificationModal, setNotificationModal] = useState(null);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState('');
@@ -242,7 +446,39 @@ function GroceryApp() {
   const [ratingModal, setRatingModal] = useState(null);
   const chatEndRef = useRef(null);
 
-  /* =============== Firebase =============== */
+  /* ✅ v2.0.5 — الإشعارات المخفية (تُحفظ في localStorage) */
+  const [dismissedNotifs, setDismissedNotifs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('umm_dismissed_notifs') || '[]'); }
+    catch { return []; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('umm_dismissed_notifs', JSON.stringify(dismissedNotifs)); }
+    catch {}
+  }, [dismissedNotifs]);
+
+  /* ✅ الإشعارات الجديدة = طلبات لم تُنجز ولم تُلغَ ولم تُخفَ */
+  const newOrderNotifications = useMemo(() => {
+    return orders.filter(o => {
+      if (!o.status) return false;
+      if (o.status.includes('أتممت')) return false;
+      if (o.status.includes('ملغي')) return false;
+      if (dismissedNotifs.includes(o._id)) return false;
+      return true;
+    });
+  }, [orders, dismissedNotifs]);
+
+  const dismissNotification = (orderId) => {
+    playSound('click');
+    setDismissedNotifs(prev => prev.includes(orderId) ? prev : [...prev, orderId]);
+  };
+
+  const completeOrderFromNotif = async (orderId) => {
+    playSound('cash');
+    await handleUpdateOrderStatus(orderId, 'أتممت الطلب ✅');
+    // بعد إتمام الطلب، سيختفي تلقائياً من الإشعارات
+  };
+
   useEffect(() => {
     let isMounted = true; let unsubscribers = [];
     const setup = async () => {
@@ -303,24 +539,32 @@ function GroceryApp() {
           setRawStats(s => ({ ...s, data: allDocs.length }));
           setCloudStatus('online');
           setCloudMessage(`متصل — ${allDocs.length} مستند`);
-        }, (err) => { setCloudStatus('error'); setCloudMessage('خطأ: ' + err.message); });
+          setLoadingStates(s => ({ ...s, products: false, ledger: false }));
+        }, (err) => {
+          setCloudStatus('error'); setCloudMessage('خطأ: ' + err.message);
+          setLoadingStates(s => ({ ...s, products: false, ledger: false }));
+        });
         unsubscribers.push(unsub1);
 
         const unsub2 = onSnapshot(collection(db, COL.CHAT), (snap) => {
           if (!isMounted) return;
           const docs = snap.docs.map(d => ({ _id:d.id, ...d.data() })).sort((a,b)=>(a.timestamp?.seconds||0)-(b.timestamp?.seconds||0));
           setChatMessages(docs); setRawStats(s => ({ ...s, chat: docs.length }));
-        }, (err)=>console.warn('chat:', err.message));
+          setLoadingStates(s => ({ ...s, chat: false }));
+        }, (err)=>{ console.warn('chat:', err.message); setLoadingStates(s => ({ ...s, chat: false })); });
         unsubscribers.push(unsub2);
 
         const unsub3 = onSnapshot(collection(db, COL.ORDERS), (snap) => {
           if (!isMounted) return;
           const docs = snap.docs.map(d => ({ _id:d.id, ...d.data() })).sort((a,b)=>(b.timestamp?.seconds||0)-(a.timestamp?.seconds||0));
           setOrders(docs); setRawStats(s => ({ ...s, orders: docs.length }));
-        }, (err)=>console.warn('orders:', err.message));
+          setLoadingStates(s => ({ ...s, orders: false }));
+        }, (err)=>{ console.warn('orders:', err.message); setLoadingStates(s => ({ ...s, orders: false })); });
         unsubscribers.push(unsub3);
-
-      } catch (e) { setCloudStatus('error'); setCloudMessage('فشل: ' + e.message); }
+      } catch (e) {
+        setCloudStatus('error'); setCloudMessage('فشل: ' + e.message);
+        setLoadingStates({ products:false, ledger:false, chat:false, orders:false });
+      }
     };
     const t = setTimeout(setup, 150);
     const onReady = () => { clearTimeout(t); setup(); };
@@ -330,7 +574,15 @@ function GroceryApp() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:'smooth' }); }, [chatMessages]);
 
-  /* =============== أدوات =============== */
+  /* ✅ تشغيل صوت عند وصول إشعار جديد (مرة واحدة لكل طلب) */
+  const lastNotifCountRef = useRef(0);
+  useEffect(() => {
+    if (newOrderNotifications.length > lastNotifCountRef.current && lastNotifCountRef.current > 0) {
+      playSound('alert');
+    }
+    lastNotifCountRef.current = newOrderNotifications.length;
+  }, [newOrderNotifications.length]);
+
   const siteTheme = useMemo(() => SITE_THEMES[siteThemeId] || SITE_THEMES.emerald, [siteThemeId]);
 
   const ledgerArray = useMemo(() => {
@@ -344,6 +596,7 @@ function GroceryApp() {
 
   const totalFamilyDebt = useMemo(() => Object.values(debtsMap).reduce((s,v)=>s+(Number(v)||0),0), [debtsMap]);
   const cartTotal = useMemo(() => cart.reduce((s,i)=>s+i.price*i.qty,0), [cart]);
+  const cartCount = useMemo(() => cart.reduce((s,i)=>s+i.qty,0), [cart]);
   const allCategories = useMemo(() => {
     if (categories.length) return categories;
     const fp = [...new Set(products.map(p => p.category).filter(Boolean))];
@@ -370,7 +623,6 @@ function GroceryApp() {
       .sort((a,b) => b.avg - a.avg);
   }, [orders]);
 
-  /* =============== كتابة =============== */
   const updateStoreDataDoc = async (docId, data) => {
     if (!dbInstance) throw new Error('غير متصل');
     const { doc, setDoc } = window.FirebaseSDK;
@@ -393,13 +645,17 @@ function GroceryApp() {
     const { doc, updateDoc } = window.FirebaseSDK;
     await updateDoc(doc(dbInstance, COL.ORDERS, docId), patch);
   };
+  const deleteOrderDoc = async (docId) => {
+    if (!dbInstance) throw new Error('غير متصل');
+    const { doc, deleteDoc } = window.FirebaseSDK;
+    await deleteDoc(doc(dbInstance, COL.ORDERS, docId));
+  };
   const deleteChatDoc = async (docId) => {
     if (!dbInstance) throw new Error('غير متصل');
     const { doc, deleteDoc } = window.FirebaseSDK;
     await deleteDoc(doc(dbInstance, COL.CHAT, docId));
   };
 
-  /* =============== الهوية =============== */
   const handleIdentityPick = (user) => {
     playSound('cash');
     if (user === 'الدعم') {
@@ -431,7 +687,6 @@ function GroceryApp() {
     setIdentityModalOpen(true);
   };
 
-  /* =============== حالة المتجر =============== */
   const toggleStoreStatus = async () => {
     playSound('cash');
     try {
@@ -523,57 +778,37 @@ function GroceryApp() {
     catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
 
-  /* ============================================================
-     📌 v2.0.1 جديد: إدارة الديون للمشرف فقط
-     (إضافة / خصم / تصفير)
-     ============================================================ */
+  const handleDeleteOrder = async (docId, buyer) => {
+    playSound('click');
+    if (!confirm(`حذف طلب (${buyer})؟ لا يمكن التراجع.`)) return;
+    try {
+      await deleteOrderDoc(docId);
+      setNotificationModal({ title:'✅ حُذف', message:`تم حذف طلب (${buyer}).` });
+    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+  };
+
   const handleDebtAdjust = async () => {
     if (!debtModal) return;
     const { member, mode, amount } = debtModal;
-
-    let newAmount;
-    let actionMsg = '';
-
-    if (mode === 'reset') {
-      newAmount = 0;
-      actionMsg = `🔄 صفّر المشرف دين (${member.name}).`;
-    } else {
+    let newAmount; let actionMsg = '';
+    if (mode === 'reset') { newAmount = 0; actionMsg = `🔄 صفّر المشرف دين (${member.name}).`; }
+    else {
       const val = parseFloat(amount);
-      if (isNaN(val) || val <= 0) {
-        setNotificationModal({ title:'⚠️', message:'أدخل مبلغاً صحيحاً أكبر من صفر' });
-        return;
-      }
-      if (mode === 'add') {
-        newAmount = (member.totalDebt || 0) + val;
-        actionMsg = `➕ أضاف المشرف ${val.toFixed(2)} ر.س لحساب (${member.name}). الدين الآن: ${newAmount.toFixed(2)} ر.س`;
-      } else if (mode === 'subtract') {
-        newAmount = Math.max(0, (member.totalDebt || 0) - val);
-        actionMsg = `➖ خصم المشرف ${val.toFixed(2)} ر.س من حساب (${member.name}). الدين الآن: ${newAmount.toFixed(2)} ر.س`;
-      }
+      if (isNaN(val) || val <= 0) { setNotificationModal({ title:'⚠️', message:'أدخل مبلغاً صحيحاً أكبر من صفر' }); return; }
+      if (mode === 'add') { newAmount = (member.totalDebt || 0) + val; actionMsg = `➕ أضاف المشرف ${val.toFixed(2)} ر.س لحساب (${member.name}). الدين الآن: ${newAmount.toFixed(2)} ر.س`; }
+      else { newAmount = Math.max(0, (member.totalDebt || 0) - val); actionMsg = `➖ خصم المشرف ${val.toFixed(2)} ر.س من حساب (${member.name}). الدين الآن: ${newAmount.toFixed(2)} ر.س`; }
     }
-
     playSound('cash');
     const newDebts = { ...debtsMap };
     newDebts[member.name] = newAmount;
-
     try {
       await updateStoreDataDoc('debts', newDebts);
-      await addBotChatDoc({
-        sender: 'الدعم',
-        text: actionMsg,
-        timeString: new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'})
-      });
+      await addBotChatDoc({ sender:'الدعم', text:actionMsg, timeString: new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) });
       setDebtModal(null);
       setNotificationModal({ title:'✅ تم التعديل', message: actionMsg });
-    } catch (err) {
-      setNotificationModal({ title:'❌ فشل', message: err.message });
-    }
+    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
 
-  /* ============================================================
-     handleSettleDebt — يبقى موجوداً لكن يُستخدم فقط من الإدارة القديمة
-     (لا يوجد زر عام في صفحة الديون للمستخدم العادي)
-     ============================================================ */
   const handleSettleDebt = async () => {
     const amount = parseFloat(payAmountInput);
     if (!payModalMember || isNaN(amount) || amount <= 0) return;
@@ -582,10 +817,7 @@ function GroceryApp() {
     newDebts[payModalMember.name] = Math.max(0, (newDebts[payModalMember.name]||0) - amount);
     try {
       await updateStoreDataDoc('debts', newDebts);
-      await addBotChatDoc({
-        sender:'الدعم', text:`✅ تم تسديد ${amount.toFixed(2)} ر.س لحساب (${payModalMember.name}).`,
-        timeString: new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'})
-      });
+      await addBotChatDoc({ sender:'الدعم', text:`✅ تم تسديد ${amount.toFixed(2)} ر.س لحساب (${payModalMember.name}).`, timeString: new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) });
       setPayModalMember(null); setPayAmountInput('');
       setNotificationModal({ title:'✅ تم', message:`خُصم ${amount.toFixed(2)} ر.س.` });
     } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
@@ -623,41 +855,54 @@ function GroceryApp() {
     if (!cart.length) return;
     if (!storeStatus.isOpen) { setNotificationModal({ title:'🚫 مغلق', message:'المتجر مغلق حالياً.' }); return; }
     playSound('click');
+    setCartDrawerOpen(false);
     setPendingPaymentMethod(paymentKey);
     setSelectedLocation('');
     setLocationModalOpen(true);
   };
 
   const confirmOrderWithLocation = async () => {
+    if (isSubmitting) return;
     if (!selectedLocation) { setNotificationModal({ title:'⚠️', message:'اختر موقعك أولاً.' }); return; }
     if (!dbInstance || !pendingPaymentMethod) return;
+
+    setIsSubmitting(true);
     playSound('cash');
+
+    const buyerForOrder = currentChatUser;
+    const locationForOrder = selectedLocation;
+    const paymentForOrder = pendingPaymentMethod;
+    const totalForOrder = cartTotal;
+    const isDebt = paymentForOrder === 'دين 📒';
     const items = cart.map(i => ({ id:i.id, name:i.name, price:i.price, qty:i.qty, desc:i.desc||'', emoji:i.emoji||'🛒', category:i.category||'', imageUrl:i.imageUrl||'' }));
-    const isDebt = pendingPaymentMethod === 'دين 📒';
+
+    const list = items.map(i => `• ${i.name} × ${i.qty} (${(i.price*i.qty).toFixed(2)} ر.س)`).join('\n');
+    const timeNow = new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});
+    const msg = `🛒 *طلب جديد - بقالة أم محمد*\n\n👤 *صاحب الطلب:* ${buyerForOrder}\n📍 *الموقع:* ${locationForOrder}\n💳 *طريقة الدفع:* ${paymentForOrder}\n⏰ *الوقت:* ${timeNow}\n\n📦 *المنتجات:*\n${list}\n\n💰 *الإجمالي:* ${totalForOrder.toFixed(2)} ر.س`;
+    try { window.open(`https://wa.me/${MOHAMMED_PHONE}?text=${encodeURIComponent(msg)}`, '_blank'); } catch(e) {}
+
+    setLocationModalOpen(false);
+    setPendingPaymentMethod(null);
+    setSelectedLocation('');
+    setCart([]);
+
     const orderData = {
-      buyer: currentChatUser, items, totalAmount: cartTotal,
-      status: ORDER_STATUSES[0].key, location: selectedLocation,
-      paymentMethod: pendingPaymentMethod,
-      orderTime: new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}),
+      buyer: buyerForOrder, items, totalAmount: totalForOrder,
+      status: ORDER_STATUSES[0].key, location: locationForOrder,
+      paymentMethod: paymentForOrder, orderTime: timeNow,
     };
+
     try {
       const orderId = await addOrderDoc(orderData);
       if (isDebt) {
         const newDebts = { ...debtsMap };
-        newDebts[currentChatUser] = (newDebts[currentChatUser]||0) + cartTotal;
+        newDebts[buyerForOrder] = (newDebts[buyerForOrder]||0) + totalForOrder;
         await updateStoreDataDoc('debts', newDebts);
-        await addBotChatDoc({
-          sender:'الدعم', text:`📝 طلب بالدين ${cartTotal.toFixed(2)} ر.س على (${currentChatUser}) - ${selectedLocation}.`,
-          timeString: new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'})
-        });
+        await addBotChatDoc({ sender:'الدعم', text:`📝 طلب بالدين ${totalForOrder.toFixed(2)} ر.س على (${buyerForOrder}) - ${locationForOrder}.`, timeString: timeNow });
       }
-      const list = items.map(i => `• ${i.name} × ${i.qty} (${(i.price*i.qty).toFixed(2)} ر.س)`).join('\n');
-      const msg = `🛒 *طلب جديد - بقالة أم محمد*\n\n👤 *صاحب الطلب:* ${currentChatUser}\n📍 *الموقع:* ${selectedLocation}\n💳 *طريقة الدفع:* ${pendingPaymentMethod}\n⏰ *الوقت:* ${orderData.orderTime}\n\n📦 *المنتجات:*\n${list}\n\n💰 *الإجمالي:* ${cartTotal.toFixed(2)} ر.س`;
-      window.open(`https://wa.me/${MOHAMMED_PHONE}?text=${encodeURIComponent(msg)}`, '_blank');
-      setCart([]); setLocationModalOpen(false);
-      setPendingPaymentMethod(null); setSelectedLocation('');
       setRatingModal({ orderId, rating: 0, comment: '' });
     } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+    finally { setIsSubmitting(false); }
   };
 
   const submitRating = async () => {
@@ -665,9 +910,7 @@ function GroceryApp() {
     playSound('cash');
     try {
       if (ratingModal.rating > 0) {
-        await updateOrderDoc(ratingModal.orderId, {
-          rating: ratingModal.rating, ratingComment: ratingModal.comment || '', ratedAt: new Date().toISOString(),
-        });
+        await updateOrderDoc(ratingModal.orderId, { rating: ratingModal.rating, ratingComment: ratingModal.comment || '', ratedAt: new Date().toISOString() });
       }
     } catch (err) { console.warn('Rating save error:', err.message); }
     closeRatingAndNavigate();
@@ -687,10 +930,8 @@ function GroceryApp() {
   };
   const statusColor = cloudStatus==='online' ? 'bg-emerald-400' : cloudStatus==='connecting' ? 'bg-amber-400 animate-pulse' : 'bg-red-400';
 
-  /* ==================================================== UI ==================================================== */
   return (
     <div className="min-h-screen flex flex-col justify-between bg-slate-100">
-
       <style>{`
         .header-gradient { background: linear-gradient(to right, ${siteTheme.headerFrom}, ${siteTheme.headerVia}, ${siteTheme.headerTo}) !important; }
         .btn-brand { background-color: ${siteTheme.primary} !important; color: white !important; }
@@ -711,6 +952,7 @@ function GroceryApp() {
         .status-open { background: linear-gradient(to left, ${siteTheme.headerTo}, ${siteTheme.headerFrom}) !important; color: white !important; }
         .chat-mine { background-color: ${siteTheme.primary} !important; color: white !important; }
         .logo-icon { color: ${siteTheme.primary} !important; }
+        .floating-cart { background-color: ${siteTheme.primary} !important; }
       `}</style>
 
       <header className="header-gradient text-white shadow-lg sticky top-0 z-40">
@@ -722,7 +964,6 @@ function GroceryApp() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl md:text-2xl font-black">بقالة أم محمد</h1>
-                {/* ✅ رقم الإصدار - يتحدث مع كل ملف جديد */}
                 <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold">v{APP_VERSION}</span>
               </div>
               <p className="text-xs text-white/90 flex items-center gap-1.5 mt-0.5">
@@ -749,6 +990,11 @@ function GroceryApp() {
                 className={`px-3.5 py-2 rounded-xl text-xs md:text-sm font-bold whitespace-nowrap relative ${activeTab===k ? 'tab-active shadow-sm' : 'text-white/85 hover:bg-white/10'}`}>
                 {label}
                 {k==='ledger' && totalFamilyDebt>0 && <span className="bg-amber-500 text-slate-900 text-[10px] font-extrabold px-1.5 rounded-full mr-1">{totalFamilyDebt.toFixed(0)}</span>}
+                {k==='admin' && newOrderNotifications.length > 0 && (
+                  <span className="absolute -top-1 -left-1 bg-red-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
+                    {newOrderNotifications.length}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -757,122 +1003,75 @@ function GroceryApp() {
 
       <main className="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
 
-        {/* ============ المنتجات ============ */}
         {activeTab === 'products' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-4">
-              <div className={`rounded-3xl p-5 shadow-md border-2 flex flex-wrap items-center justify-between gap-3 ${storeStatus.isOpen ? 'status-open border-emerald-500' : 'bg-gradient-to-l from-red-800 to-red-950 border-red-500 text-white'}`}>
-                <div>
-                  <span className="text-[11px] bg-white/20 text-white font-extrabold px-2 py-0.5 rounded-full">حالة المتجر</span>
-                  <h2 className="text-2xl font-black mt-2 flex items-center gap-2">
-                    <span className="text-3xl">{storeStatus.isOpen ? '🟢' : '🔴'}</span>
-                    {storeStatus.isOpen ? 'المتجر مفتوح الآن' : 'المتجر مغلق حالياً'}
-                  </h2>
-                  <p className="text-xs text-white/80 mt-1">{storeStatus.isOpen ? 'يمكنك الطلب الآن ويوصلك محمد 🚀' : 'الطلبات معطلة مؤقتاً'}</p>
-                </div>
+          <div className="space-y-4">
+            <div className={`rounded-3xl p-5 shadow-md border-2 flex flex-wrap items-center justify-between gap-3 ${storeStatus.isOpen ? 'status-open border-emerald-500' : 'bg-gradient-to-l from-red-800 to-red-950 border-red-500 text-white'}`}>
+              <div>
+                <span className="text-[11px] bg-white/20 text-white font-extrabold px-2 py-0.5 rounded-full">حالة المتجر</span>
+                <h2 className="text-2xl font-black mt-2 flex items-center gap-2">
+                  <span className="text-3xl">{storeStatus.isOpen ? '🟢' : '🔴'}</span>
+                  {storeStatus.isOpen ? 'المتجر مفتوح الآن' : 'المتجر مغلق حالياً'}
+                </h2>
+                <p className="text-xs text-white/80 mt-1">{storeStatus.isOpen ? 'يمكنك الطلب الآن ويوصلك محمد 🚀' : 'الطلبات معطلة مؤقتاً'}</p>
               </div>
-
-              {storeStatus.isOpen && (banner.title || banner.kicker || banner.message) && (
-                <div className="rounded-3xl p-5 shadow-sm" style={{ background:`linear-gradient(to left, ${currentBannerTheme.bgFrom}, ${currentBannerTheme.bgTo})`, color: currentBannerTheme.text }}>
-                  {banner.kicker && <span className="text-[11px] bg-black/25 text-white font-extrabold px-2 py-0.5 rounded-full">{banner.kicker}</span>}
-                  {banner.title && <h2 className="text-base md:text-lg font-black mt-2">{banner.title}</h2>}
-                  {banner.message && <p className="text-xs mt-1 leading-relaxed opacity-95">{banner.message}</p>}
-                </div>
-              )}
-
-              <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-3 items-center">
-                <div className="relative flex-1 min-w-[180px]">
-                  <input type="text" placeholder="ابحث..." value={productSearch} onChange={e=>setProductSearch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                  <span className="absolute right-3 top-2.5 text-slate-400">🔍</span>
-                </div>
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                  <button onClick={()=>setSelectedCategory('الكل')} className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${selectedCategory==='الكل'?'btn-brand':'bg-slate-100 text-slate-600'}`}>الكل</button>
-                  {allCategories.map(c => (
-                    <button key={c.id} onClick={()=>setSelectedCategory(c.id)} className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${selectedCategory===c.id?'btn-brand':'bg-slate-100 text-slate-600'}`}>{c.name}</button>
-                  ))}
-                </div>
-              </div>
-
-              {filteredProducts.length === 0 ? (
-                <div className="bg-white rounded-3xl p-12 text-center text-slate-400 border border-slate-200"><div className="text-5xl opacity-40 mb-2">📦</div><p className="font-bold">لا توجد منتجات</p></div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {filteredProducts.map(p => {
-                    const imgSrc = imageMap[String(p.id)] || p.imageUrl || '';
-                    return (
-                      <div key={p.id} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col group">
-                        <div className="relative w-full h-48 bg-white rounded-2xl overflow-hidden mb-3 border border-slate-100 flex items-center justify-center">
-                          {imgSrc ? (<img src={imgSrc} alt={p.name} className="w-full h-full object-contain p-2"
-                            onError={e=>{ e.target.style.display='none'; if (e.target.nextElementSibling) e.target.nextElementSibling.style.display='flex'; }} />) : null}
-                          <div className="w-full h-full flex items-center justify-center text-5xl bg-slate-50" style={{ display: imgSrc ? 'none' : 'flex' }}>{p.emoji || '🛒'}</div>
-                        </div>
-                        <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md self-start">{p.category || 'عام'}</span>
-                        <h3 className="font-bold text-slate-800 text-sm mt-1.5">{p.name}</h3>
-                        {p.desc && <p className="text-[11px] text-slate-500 mt-0.5">{p.desc}</p>}
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                          <span className="text-base font-black text-brand">{(Number(p.price)||0).toFixed(2)} <span className="text-xs">ر.س</span></span>
-                          <button onClick={()=>addToCart(p)} disabled={!storeStatus.isOpen} className="btn-brand font-bold px-3 py-2 rounded-xl text-xs">➕ إضافة</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col h-fit sticky top-20">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                <h2 className="font-black text-slate-800 text-lg">🛍️ السلة</h2>
-                <span className="bg-brand-light text-xs font-bold px-2.5 py-1 rounded-full">{cart.length}</span>
+            {storeStatus.isOpen && (banner.title || banner.kicker || banner.message) && (
+              <div className="rounded-3xl p-5 shadow-sm" style={{ background:`linear-gradient(to left, ${currentBannerTheme.bgFrom}, ${currentBannerTheme.bgTo})`, color: currentBannerTheme.text }}>
+                {banner.kicker && <span className="text-[11px] bg-black/25 text-white font-extrabold px-2 py-0.5 rounded-full">{banner.kicker}</span>}
+                {banner.title && <h2 className="text-base md:text-lg font-black mt-2">{banner.title}</h2>}
+                {banner.message && <p className="text-xs mt-1 leading-relaxed opacity-95">{banner.message}</p>}
               </div>
-              <div className="bg-brand-light p-2.5 rounded-xl mb-4 flex items-center justify-between text-xs border border-slate-200">
-                <span className="font-bold">الطلب باسم:</span>
-                <span className="bg-brand px-2.5 py-0.5 rounded-lg text-white">👤 {currentChatUser}</span>
+            )}
+
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-3 items-center">
+              <div className="relative flex-1 min-w-[180px]">
+                <input type="text" placeholder="ابحث..." value={productSearch} onChange={e=>setProductSearch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
+                <span className="absolute right-3 top-2.5 text-slate-400">🔍</span>
               </div>
-              {!storeStatus.isOpen && <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded-xl mb-3 text-xs font-bold text-center">🔴 المتجر مغلق</div>}
-              {cart.length === 0 ? (
-                <div className="text-center py-12 text-slate-400"><div className="text-5xl opacity-40 mb-2">🛒</div><p className="text-sm">السلة فارغة</p></div>
-              ) : (
-                <div className="space-y-3 max-h-[320px] overflow-y-auto">
-                  {cart.map(item => (
-                    <div key={item.id} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl">
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-2xl">{item.emoji || '🛒'}</span>
-                        <div>
-                          <div className="font-bold text-xs text-slate-800">{item.name}</div>
-                          <span className="text-[11px] text-brand">{(item.price*item.qty).toFixed(2)} ر.س</span>
-                        </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                <button onClick={()=>setSelectedCategory('الكل')} className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${selectedCategory==='الكل'?'btn-brand':'bg-slate-100 text-slate-600'}`}>الكل</button>
+                {allCategories.map(c => (
+                  <button key={c.id} onClick={()=>setSelectedCategory(c.id)} className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${selectedCategory===c.id?'btn-brand':'bg-slate-100 text-slate-600'}`}>{c.name}</button>
+                ))}
+              </div>
+            </div>
+
+            {loadingStates.products ? (
+              <div className="bg-white rounded-3xl border border-slate-200">
+                <Spinner text="جارٍ تحميل المنتجات من السحابة..." />
+              </div>
+            ) : filteredProducts.length === 0 ? (
+              <div className="bg-white rounded-3xl p-12 text-center text-slate-400 border border-slate-200">
+                <div className="text-5xl opacity-40 mb-2">📦</div>
+                <p className="font-bold">لا توجد منتجات</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {filteredProducts.map(p => {
+                  const imgSrc = imageMap[String(p.id)] || p.imageUrl || '';
+                  return (
+                    <div key={p.id} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col group">
+                      <div className="relative w-full h-48 bg-white rounded-2xl overflow-hidden mb-3 border border-slate-100 flex items-center justify-center">
+                        {imgSrc ? (<img src={imgSrc} alt={p.name} className="w-full h-full object-contain p-2"
+                          onError={e=>{ e.target.style.display='none'; if (e.target.nextElementSibling) e.target.nextElementSibling.style.display='flex'; }} />) : null}
+                        <div className="w-full h-full flex items-center justify-center text-5xl bg-slate-50" style={{ display: imgSrc ? 'none' : 'flex' }}>{p.emoji || '🛒'}</div>
                       </div>
-                      <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg p-1">
-                        <button onClick={()=>updateCartQty(item.id,-1)} className="w-6 h-6 bg-slate-100 rounded text-xs">-</button>
-                        <span className="w-5 text-center text-xs font-bold">{item.qty}</span>
-                        <button onClick={()=>updateCartQty(item.id,1)} className="w-6 h-6 bg-slate-100 rounded text-xs">+</button>
+                      <span className="text-[10px] font-extrabold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md self-start">{p.category || 'عام'}</span>
+                      <h3 className="font-bold text-slate-800 text-sm mt-1.5">{p.name}</h3>
+                      {p.desc && <p className="text-[11px] text-slate-500 mt-0.5">{p.desc}</p>}
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-base font-black text-brand">{(Number(p.price)||0).toFixed(2)} <span className="text-xs">ر.س</span></span>
+                        <button onClick={()=>addToCart(p)} disabled={!storeStatus.isOpen} className="btn-brand font-bold px-3 py-2 rounded-xl text-xs">➕ إضافة</button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-              {cart.length > 0 && (
-                <div className="mt-6 pt-4 border-t border-slate-200 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold text-slate-600">الإجمالي:</span>
-                    <span className="text-xl font-black text-brand">{cartTotal.toFixed(2)} ر.س</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {PAYMENT_METHODS.map(pm => (
-                      <button key={pm.key} disabled={!storeStatus.isOpen} onClick={()=>startCheckout(pm.key)} className={`${pm.btn} font-extrabold py-2.5 rounded-xl text-[11px] flex flex-col items-center gap-0.5`}>
-                        <span>{pm.icon}</span><span>{pm.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-slate-400 text-center">سيُطلب منك تحديد الموقع قبل التأكيد</p>
-                </div>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
-        {/* ============ ✅ الديون - بدون زر تسديد للمستخدم العادي ============ */}
         {activeTab === 'ledger' && (
           <div className="space-y-6">
             <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-6 rounded-3xl flex flex-wrap items-center justify-between gap-4">
@@ -882,10 +1081,14 @@ function GroceryApp() {
               </div>
               <div className="bg-white/10 px-5 py-3 rounded-2xl text-center">
                 <span className="text-xs block">الإجمالي</span>
-                <span className="text-2xl font-black text-amber-400">{totalFamilyDebt.toFixed(2)} ر.س</span>
+                <span className="text-2xl font-black text-amber-400">{loadingStates.ledger ? '...' : totalFamilyDebt.toFixed(2)} ر.س</span>
               </div>
             </div>
-            {ledgerArray.length === 0 ? (
+            {loadingStates.ledger ? (
+              <div className="bg-white rounded-3xl border border-slate-200">
+                <Spinner text="جارٍ تحميل دفتر الديون من السحابة..." />
+              </div>
+            ) : ledgerArray.length === 0 ? (
               <div className="bg-white rounded-3xl p-12 text-center text-slate-400 border border-slate-200">لا سجلات</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -900,10 +1103,7 @@ function GroceryApp() {
                       <span className="text-xs text-slate-500 font-bold">الدين:</span>
                       <span className={`text-lg font-black ${m.totalDebt>0?'text-amber-600':'text-emerald-600'}`}>{m.totalDebt.toFixed(2)} ر.س</span>
                     </div>
-                    {/* ✅ ملاحظة بدل زر التسديد - التعديل يتم من لوحة الإدارة فقط */}
-                    <div className="text-center text-[10px] text-slate-400 py-2 border-t border-slate-100">
-                      ℹ️ للتعديل تواصل مع المشرف
-                    </div>
+                    <div className="text-center text-[10px] text-slate-400 py-2 border-t border-slate-100">ℹ️ للتعديل تواصل مع المشرف</div>
                   </div>
                 ))}
               </div>
@@ -911,7 +1111,6 @@ function GroceryApp() {
           </div>
         )}
 
-        {/* ============ الدردشة ============ */}
         {activeTab === 'chat' && (
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[75vh] max-h-[700px] overflow-hidden">
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between gap-3">
@@ -927,7 +1126,9 @@ function GroceryApp() {
               </div>
             </div>
             <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50">
-              {chatMessages.length === 0 ? (
+              {loadingStates.chat ? (
+                <Spinner text="جارٍ تحميل الرسائل من السحابة..." />
+              ) : chatMessages.length === 0 ? (
                 <div className="text-center py-12 text-slate-400 text-xs">لا رسائل بعد</div>
               ) : chatMessages.map(msg => {
                 const isMine = msg.sender === currentChatUser;
@@ -954,14 +1155,17 @@ function GroceryApp() {
           </div>
         )}
 
-        {/* ============ الطلبات ============ */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
             <div className="bg-white p-5 rounded-3xl border border-slate-200 flex items-center justify-between">
               <h2 className="font-black text-slate-900 text-lg">📜 الطلبات</h2>
-              <span className="text-xs text-slate-500 font-bold">العدد: {orders.length}</span>
+              <span className="text-xs text-slate-500 font-bold">العدد: {loadingStates.orders ? '...' : orders.length}</span>
             </div>
-            {orders.length === 0 ? (
+            {loadingStates.orders ? (
+              <div className="bg-white rounded-3xl border border-slate-200">
+                <Spinner text="جارٍ تحميل الطلبات من السحابة..." />
+              </div>
+            ) : orders.length === 0 ? (
               <div className="bg-white rounded-3xl p-12 text-center text-slate-400 border border-slate-200"><div className="text-5xl opacity-40 mb-2">📦</div><p className="font-bold">لا طلبات</p></div>
             ) : orders.map(ord => {
               const isCancelled = (ord.status || '').includes('ملغي') || (ord.status || '').includes('❌');
@@ -1015,19 +1219,46 @@ function GroceryApp() {
           </div>
         )}
 
-        {/* ============ الإدارة ============ */}
         {activeTab === 'admin' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
+
+            {/* ✅ v2.0.5 — إشعارات الطلبات الجديدة (فوق كل شيء) */}
+            {newOrderNotifications.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-black text-amber-900 text-lg flex items-center gap-2">
+                    <span className="text-2xl">🔔</span>
+                    لديك {newOrderNotifications.length} {newOrderNotifications.length === 1 ? 'طلب جديد' : 'طلبات جديدة'}
+                  </h2>
+                  {newOrderNotifications.length > 1 && (
+                    <button
+                      onClick={() => { playSound('click'); setDismissedNotifs(prev => [...prev, ...newOrderNotifications.map(o => o._id)]); }}
+                      className="text-xs font-black bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-xl">
+                      إخفاء الكل ✕
+                    </button>
+                  )}
+                </div>
+                {newOrderNotifications.map(order => (
+                  <NewOrderNotification
+                    key={order._id}
+                    order={order}
+                    onStatusChange={handleUpdateOrderStatus}
+                    onDismiss={dismissNotification}
+                    onComplete={completeOrderFromNotif}
+                  />
+                ))}
+              </div>
+            )}
+
             <div className="bg-slate-900 text-white p-6 rounded-3xl flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-black">⚙️ لوحة التحكم</h2>
-                <p className="text-xs text-slate-400 mt-1">كل التعديلات تُحفظ فوراً في السحابة</p>
+                <p className="text-xs text-slate-400 mt-1">اضغط على أي قسم ▼ لفتحه أو إغلاقه</p>
               </div>
               <button onClick={()=>setProductModal({ mode:'add', data:{ name:'', price:0, desc:'', emoji:'🛒', category: allCategories[0]?.id || '' }, pendingImage:'' })} className="btn-brand font-black px-4 py-2.5 rounded-2xl text-xs">➕ إضافة منتج</button>
             </div>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <h3 className="font-black text-slate-800 text-sm">🏪 حالة المتجر</h3>
+            <AdminSection title="حالة المتجر" icon="🏪" badge={storeStatus.isOpen ? 'مفتوح 🟢' : 'مغلق 🔴'}>
               <div className={`p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 ${storeStatus.isOpen ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">{storeStatus.isOpen ? '🟢' : '🔴'}</span>
@@ -1037,18 +1268,12 @@ function GroceryApp() {
                   {storeStatus.isOpen ? '🔒 إغلاق' : '🔓 فتح'}
                 </button>
               </div>
-            </div>
+            </AdminSection>
 
-            {/* ============================================================
-                ✅ v2.0.1 جديد: قسم إدارة دفتر الديون (للمشرف فقط)
-                ============================================================ */}
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="font-black text-slate-800 text-sm">📒 إدارة دفتر الديون</h3>
-                <span className="text-[10px] bg-amber-100 text-amber-800 font-black px-2.5 py-1 rounded-full">🔒 المشرف فقط</span>
-              </div>
-
-              {ledgerArray.length === 0 ? (
+            <AdminSection title="إدارة دفتر الديون" icon="📒" badge={`${ledgerArray.length} أعضاء`}>
+              {loadingStates.ledger ? (
+                <Spinner text="جارٍ تحميل..." />
+              ) : ledgerArray.length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-4">لا سجلات ديون بعد</p>
               ) : (
                 <div className="space-y-3">
@@ -1066,39 +1291,18 @@ function GroceryApp() {
                           {m.totalDebt.toFixed(2)} <span className="text-xs">ر.س</span>
                         </div>
                       </div>
-
                       <div className="grid grid-cols-3 gap-2">
-                        <button
-                          onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'add', amount: '' }); }}
-                          className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-extrabold py-2.5 rounded-xl text-[11px] transition active:scale-95"
-                        >
-                          ➕ إضافة
-                        </button>
-                        <button
-                          onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'subtract', amount: '' }); }}
-                          className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-extrabold py-2.5 rounded-xl text-[11px] transition active:scale-95"
-                        >
-                          ➖ خصم
-                        </button>
-                        <button
-                          onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'reset', amount: '' }); }}
-                          className="bg-red-100 hover:bg-red-200 text-red-700 font-extrabold py-2.5 rounded-xl text-[11px] transition active:scale-95"
-                        >
-                          🔄 تصفير
-                        </button>
+                        <button onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'add', amount: '' }); }} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-extrabold py-2.5 rounded-xl text-[11px] active:scale-95">➕ إضافة</button>
+                        <button onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'subtract', amount: '' }); }} className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-extrabold py-2.5 rounded-xl text-[11px] active:scale-95">➖ خصم</button>
+                        <button onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'reset', amount: '' }); }} className="bg-red-100 hover:bg-red-200 text-red-700 font-extrabold py-2.5 rounded-xl text-[11px] active:scale-95">🔄 تصفير</button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
+            </AdminSection>
 
-              <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-[11px] text-blue-800 text-center font-bold">
-                💡 كل عملية تُسجَّل في الدردشة العائلية تلقائياً (إذا كان البوت شغّالاً)
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <h3 className="font-black text-slate-800 text-sm">🤖 بوت الدردشة التلقائي</h3>
+            <AdminSection title="بوت الدردشة التلقائي" icon="🤖" badge={botConfig.enabled ? 'شغال 🔊' : 'مطفأ 🔇'}>
               <div className={`p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 ${botConfig.enabled ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
                 <div className="flex items-center gap-3">
                   <span className="text-3xl">{botConfig.enabled ? '🔊' : '🔇'}</span>
@@ -1111,58 +1315,44 @@ function GroceryApp() {
                   {botConfig.enabled ? '🔇 إطفاء' : '🔊 تشغيل'}
                 </button>
               </div>
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-black text-slate-800 text-sm">🎨 لون الموقع</h3>
-                <button onClick={()=>setThemeModal(siteThemeId)} className="bg-brand-light px-3 py-1.5 rounded-xl text-xs font-extrabold">✏️ تعديل</button>
-              </div>
+            <AdminSection title="لون الموقع" icon="🎨" badge={siteTheme.label}>
+              <button onClick={()=>setThemeModal(siteThemeId)} className="w-full bg-brand-light px-3 py-3 rounded-xl text-xs font-extrabold">✏️ تغيير اللون</button>
               <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl">
                 <div className="w-14 h-14 rounded-xl" style={{ background:`linear-gradient(to bottom right, ${siteTheme.headerFrom}, ${siteTheme.headerTo})` }}></div>
                 <div className="text-xs"><div className="font-black">{siteTheme.label}</div><div className="text-slate-500">الثيم الحالي</div></div>
               </div>
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-black text-slate-800 text-sm">🏪 شعار البقالة</h3>
-                <button onClick={()=>setLogoModal({ ...storeLogo })} className="bg-brand-light px-3 py-1.5 rounded-xl text-xs font-extrabold">✏️ تعديل</button>
-              </div>
+            <AdminSection title="شعار البقالة" icon="🏪">
+              <button onClick={()=>setLogoModal({ ...storeLogo })} className="w-full bg-brand-light px-3 py-3 rounded-xl text-xs font-extrabold">✏️ تعديل الشعار</button>
               <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-xl">
                 <div className="w-14 h-14 bg-white rounded-xl border border-slate-200 flex items-center justify-center overflow-hidden">
                   {storeLogo.dataUrl ? (<img src={storeLogo.dataUrl} alt="logo" className="w-full h-full object-contain p-1" />) : (<span className="text-3xl">{storeLogo.emoji || '🛒'}</span>)}
                 </div>
                 <div className="text-xs text-slate-500">{storeLogo.dataUrl ? 'صورة مرفوعة' : `إيموجي: ${storeLogo.emoji}`}</div>
               </div>
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-black text-slate-800 text-sm">📢 البانر التسويقي</h3>
-                <button onClick={()=>setBannerModal({ ...banner })} className="bg-brand-light px-3 py-1.5 rounded-xl text-xs font-extrabold">✏️ تعديل</button>
-              </div>
+            <AdminSection title="البانر التسويقي" icon="📢" badge={currentBannerTheme.label}>
+              <button onClick={()=>setBannerModal({ ...banner })} className="w-full bg-brand-light px-3 py-3 rounded-xl text-xs font-extrabold">✏️ تعديل البانر</button>
               <div className="rounded-2xl p-4 text-xs space-y-1" style={{ background:`linear-gradient(to left, ${currentBannerTheme.bgFrom}, ${currentBannerTheme.bgTo})`, color: currentBannerTheme.text }}>
                 <div><strong>العنوان:</strong> {banner.title || '—'}</div>
                 <div><strong>الرسالة:</strong> {banner.message || '—'}</div>
-                <div><strong>اللون:</strong> {currentBannerTheme.label}</div>
               </div>
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-black text-slate-800 text-sm">📂 الأقسام ({categories.length})</h3>
-                <button onClick={()=>setCategoriesModal(categories.map(c => ({ ...c })))} className="bg-brand-light px-3 py-1.5 rounded-xl text-xs font-extrabold">✏️ تعديل</button>
-              </div>
+            <AdminSection title="الأقسام" icon="📂" badge={`${categories.length}`}>
+              <button onClick={()=>setCategoriesModal(categories.map(c => ({ ...c })))} className="w-full bg-brand-light px-3 py-3 rounded-xl text-xs font-extrabold">✏️ تعديل الأقسام</button>
               <div className="flex flex-wrap gap-2">
                 {categories.length === 0 ? (<p className="text-xs text-slate-400">لا أقسام</p>) : categories.map(c => (
                   <span key={c.id} className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold">{c.name}</span>
                 ))}
               </div>
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <h3 className="font-black text-slate-800 text-sm">⭐ تقييمات العملاء ({ratingsByUser.length})</h3>
+            <AdminSection title="تقييمات العملاء" icon="⭐" badge={`${ratingsByUser.length}`}>
               {ratingsByUser.length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-4">لا تقييمات بعد</p>
               ) : (
@@ -1180,10 +1370,9 @@ function GroceryApp() {
                         <div className="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
                           <span className="text-amber-500 text-lg">★</span>
                           <span className="font-black text-amber-700">{r.avg.toFixed(1)}</span>
-                          <span className="text-[10px] text-slate-500">/5</span>
                         </div>
                       </div>
-                      <div className="flex gap-0.5 mb-2">
+                      <div className="flex gap-0.5">
                         {[1,2,3,4,5].map(n => (<span key={n} className={`text-lg ${n <= Math.round(r.avg) ? 'text-amber-400' : 'text-slate-300'}`}>★</span>))}
                       </div>
                       {r.ratings.filter(x=>x.comment).length > 0 && (
@@ -1199,10 +1388,9 @@ function GroceryApp() {
                   ))}
                 </div>
               )}
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <h3 className="font-black text-slate-800 text-sm">🔍 تشخيص</h3>
+            <AdminSection title="تشخيص الاتصال" icon="🔍" badge={cloudStatus === 'online' ? 'متصل ✅' : 'غير متصل ⚠️'}>
               <div className="text-xs space-y-1 bg-slate-50 p-3 rounded-xl">
                 <div><strong>الحالة:</strong> <span className={cloudStatus==='online'?'text-emerald-600':'text-red-600'}>{cloudStatus}</span></div>
                 <div><strong>الرسالة:</strong> {cloudMessage}</div>
@@ -1215,15 +1403,18 @@ function GroceryApp() {
                 <div className="mt-2 pt-2 border-t border-slate-200 text-[11px] text-slate-500">
                   💡 واتساب محمد: <code className="bg-white px-1 rounded">{MOHAMMED_PHONE}</code>
                 </div>
-                <div className="mt-2 pt-2 border-t border-slate-200 text-[11px] text-slate-500">
+                <div className="text-[11px] text-slate-500">
                   📌 إصدار التطبيق: <code className="bg-white px-1 rounded">v{APP_VERSION}</code>
                 </div>
+                <div className="text-[11px] text-slate-500">
+                  🔔 إشعارات نشطة: <code className="bg-white px-1 rounded">{newOrderNotifications.length}</code>
+                </div>
               </div>
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-4">
-              <h3 className="font-black text-slate-800 text-sm">📦 المنتجات ({products.length})</h3>
-              {products.length === 0 ? (<p className="text-xs text-slate-400 text-center py-4">لا منتجات</p>) : (
+            <AdminSection title="المنتجات" icon="📦" badge={`${products.length}`}>
+              {loadingStates.products ? (<Spinner text="جارٍ التحميل..." />) :
+               products.length === 0 ? (<p className="text-xs text-slate-400 text-center py-4">لا منتجات</p>) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-right text-xs">
                     <thead><tr className="border-b border-slate-200 text-slate-400 font-extrabold">
@@ -1236,7 +1427,7 @@ function GroceryApp() {
                           <tr key={p.id}>
                             <td className="py-2.5 flex items-center gap-2">
                               <span className="text-xl">{p.emoji || '🛒'}</span>
-                              <div><div className="text-slate-800">{p.name}</div>{p.desc && <div className="text-[10px] text-slate-500">{p.desc}</div>}</div>
+                              <div><div className="text-slate-800">{p.name}</div></div>
                             </td>
                             <td className="py-2.5 text-slate-600">{p.category}</td>
                             <td className="py-2.5 text-brand font-black">{(Number(p.price)||0).toFixed(2)}</td>
@@ -1252,44 +1443,140 @@ function GroceryApp() {
                   </table>
                 </div>
               )}
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <h3 className="font-black text-slate-800 text-sm">🚚 تحديث حالات الطلبات</h3>
-              {orders.length === 0 ? <p className="text-xs text-slate-400 text-center py-4">لا طلبات</p>
-              : orders.map(ord => (
-                <div key={ord._id} className="bg-slate-50 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <span className="font-black text-xs">{ord.buyer}</span>
-                    <span className="text-xs font-black mr-2 text-brand">{(Number(ord.totalAmount)||0).toFixed(2)} ر.س</span>
-                    {ord.location && <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md mr-2">📍 {ord.location}</span>}
+            <AdminSection title="إدارة الطلبات" icon="🚚" badge={`${orders.length}`}>
+              {loadingStates.orders ? (<Spinner text="جارٍ التحميل..." />) :
+               orders.length === 0 ? (<p className="text-xs text-slate-400 text-center py-4">لا طلبات</p>) :
+               orders.map(ord => (
+                <div key={ord._id} className="bg-slate-50 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 border border-slate-200">
+                  <div className="flex-1 min-w-[180px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="bg-slate-900 text-white font-black text-[10px] px-2 py-0.5 rounded-lg">{ord._id.slice(0,6)}</span>
+                      <span className="font-black text-xs">{ord.buyer}</span>
+                      <span className="text-xs font-black text-brand">{(Number(ord.totalAmount)||0).toFixed(2)} ر.س</span>
+                      {ord.location && <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md">📍 {ord.location}</span>}
+                    </div>
                   </div>
-                  <select value={ord.status || ''} onChange={e=>handleUpdateOrderStatus(ord._id, e.target.value)} className="bg-white border border-slate-300 text-xs rounded-xl px-3 py-1.5">
-                    {ORDER_STATUSES.map(st => <option key={st.key} value={st.key}>{st.icon} {st.label}</option>)}
-                    <option value="ملغي ❌">❌ ملغي</option>
-                    {ord.status && !ORDER_STATUSES.find(s=>s.key===ord.status) && ord.status !== 'ملغي ❌' && <option value={ord.status}>{ord.status}</option>}
-                  </select>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select value={ord.status || ''} onChange={e=>handleUpdateOrderStatus(ord._id, e.target.value)} className="bg-white border border-slate-300 text-xs rounded-xl px-3 py-1.5">
+                      {ORDER_STATUSES.map(st => <option key={st.key} value={st.key}>{st.icon} {st.label}</option>)}
+                      <option value="ملغي ❌">❌ ملغي</option>
+                      {ord.status && !ORDER_STATUSES.find(s=>s.key===ord.status) && ord.status !== 'ملغي ❌' && <option value={ord.status}>{ord.status}</option>}
+                    </select>
+                    <button onClick={() => handleDeleteOrder(ord._id, ord.buyer)} className="bg-red-100 hover:bg-red-200 text-red-700 font-extrabold px-3 py-1.5 rounded-xl text-[11px] active:scale-95">🗑️ حذف</button>
+                  </div>
                 </div>
               ))}
-            </div>
+            </AdminSection>
 
-            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
-              <h3 className="font-black text-slate-800 text-sm">💬 الإشراف على الدردشة ({chatMessages.length})</h3>
-              <div className="max-h-48 overflow-y-auto space-y-2">
+            <AdminSection title="الإشراف على الدردشة" icon="💬" badge={`${chatMessages.length}`}>
+              <div className="max-h-64 overflow-y-auto space-y-2">
                 {chatMessages.length === 0 ? <p className="text-xs text-slate-400 text-center py-4">لا رسائل</p>
                 : chatMessages.map(m => (
                   <div key={m._id} className="flex items-center justify-between bg-slate-50 p-2 rounded-xl text-xs">
-                    <span><strong>{m.sender}:</strong> {m.text}</span>
-                    <button onClick={()=>handleDeleteChatMessage(m._id)} className="text-red-500 font-bold px-2">حذف</button>
+                    <span className="flex-1 mr-2"><strong>{m.sender}:</strong> {m.text}</span>
+                    <button onClick={()=>handleDeleteChatMessage(m._id)} className="text-red-500 font-bold px-2 flex-shrink-0">حذف</button>
                   </div>
                 ))}
               </div>
-            </div>
+            </AdminSection>
           </div>
         )}
       </main>
 
-      {/* ✅ نافذة "من أنت؟" */}
+      {activeTab === 'products' && !cartDrawerOpen && (
+        <button
+          onClick={() => { playSound('click'); setCartDrawerOpen(true); }}
+          className="floating-cart fixed bottom-6 right-6 z-40 w-16 h-16 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all duration-200"
+          style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.25)' }}
+          title="فتح السلة">
+          <span className="text-2xl">🛒</span>
+          {cartCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">
+              {cartCount > 99 ? '99+' : cartCount}
+            </span>
+          )}
+        </button>
+      )}
+
+      {cartDrawerOpen && (
+        <div className="fixed inset-0 z-[70] flex" onClick={() => setCartDrawerOpen(false)}>
+          <div className="flex-1 bg-slate-950/50 backdrop-blur-sm"></div>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md bg-white shadow-2xl flex flex-col h-full" style={{ animation: 'slideIn 0.25s ease-out' }}>
+            <style>{`
+              @keyframes slideIn {
+                from { transform: translateX(-100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+              }
+            `}</style>
+
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-brand rounded-2xl flex items-center justify-center text-xl">🛒</div>
+                <div>
+                  <h3 className="font-black text-base">سلة التسوق</h3>
+                  <p className="text-[11px] text-slate-300">{cartCount} منتج · {cartTotal.toFixed(2)} ر.س</p>
+                </div>
+              </div>
+              <button onClick={() => setCartDrawerOpen(false)} className="text-white/70 hover:text-white text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10">✕</button>
+            </div>
+
+            <div className="bg-brand-light p-3 flex items-center justify-between text-xs border-b border-slate-200">
+              <span className="font-bold">الطلب باسم:</span>
+              <span className="bg-brand px-3 py-1 rounded-lg text-white font-black">👤 {currentChatUser}</span>
+            </div>
+
+            {!storeStatus.isOpen && (
+              <div className="bg-red-50 border-b border-red-200 text-red-800 p-3 text-xs font-bold text-center">🔴 المتجر مغلق حالياً — لا يمكن الطلب</div>
+            )}
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {cart.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <div className="text-6xl opacity-40 mb-3">🛒</div>
+                  <p className="text-sm font-bold">السلة فارغة</p>
+                  <p className="text-xs text-slate-400 mt-1">أضف منتجات لتظهر هنا</p>
+                </div>
+              ) : cart.map(item => (
+                <div key={item.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                  <div className="flex items-center gap-3 flex-1">
+                    <span className="text-3xl">{item.emoji || '🛒'}</span>
+                    <div className="flex-1">
+                      <div className="font-bold text-sm text-slate-800">{item.name}</div>
+                      <span className="text-xs text-brand font-black">{(item.price*item.qty).toFixed(2)} ر.س</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg p-1">
+                    <button onClick={()=>updateCartQty(item.id,-1)} className="w-7 h-7 bg-slate-100 rounded text-sm font-black">-</button>
+                    <span className="w-6 text-center text-sm font-black">{item.qty}</span>
+                    <button onClick={()=>updateCartQty(item.id,1)} className="w-7 h-7 bg-slate-100 rounded text-sm font-black">+</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {cart.length > 0 && (
+              <div className="p-4 border-t border-slate-200 space-y-3 bg-white">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-600">الإجمالي النهائي:</span>
+                  <span className="text-2xl font-black text-brand">{cartTotal.toFixed(2)} ر.س</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {PAYMENT_METHODS.map(pm => (
+                    <button key={pm.key} disabled={!storeStatus.isOpen} onClick={()=>startCheckout(pm.key)} className={`${pm.btn} font-extrabold py-3 rounded-xl text-[11px] flex flex-col items-center gap-0.5`}>
+                      <span className="text-base">{pm.icon}</span>
+                      <span>{pm.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 text-center">سيُطلب منك تحديد الموقع قبل التأكيد</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {identityModalOpen && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl space-y-5 text-center">
@@ -1312,7 +1599,6 @@ function GroceryApp() {
         </div>
       )}
 
-      {/* ✅ PIN الدعم */}
       {supportPinModalOpen && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[110] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
@@ -1331,7 +1617,6 @@ function GroceryApp() {
         </div>
       )}
 
-      {/* ✅ نافذة التقييم */}
       {ratingModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[90] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl space-y-5 text-center">
@@ -1364,19 +1649,16 @@ function GroceryApp() {
         </div>
       )}
 
-      {/* ✅ نافذة تعديل الدين (v2.0.1 جديد) */}
       {debtModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black">
                 {debtModal.mode === 'add' ? '➕ إضافة مبلغ للدين' :
-                 debtModal.mode === 'subtract' ? '➖ خصم مبلغ من الدين' :
-                 '🔄 تصفير الدين'}
+                 debtModal.mode === 'subtract' ? '➖ خصم مبلغ من الدين' : '🔄 تصفير الدين'}
               </h3>
               <button onClick={()=>setDebtModal(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
-
             <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-3">
               <AnonymousAvatar size={44} />
               <div>
@@ -1386,27 +1668,17 @@ function GroceryApp() {
                 </div>
               </div>
             </div>
-
             {debtModal.mode === 'reset' ? (
               <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-xs text-red-700 text-center font-bold">
                 ⚠️ هل أنت متأكد من تصفير دين ({debtModal.member.name})؟
-                <br />
-                <span className="text-[10px] text-red-500 mt-1 block">سيصبح الدين 0.00 ر.س</span>
               </div>
             ) : (
               <div>
                 <label className="block text-xs font-bold mb-1 text-slate-700">المبلغ (ر.س):</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  autoFocus
-                  value={debtModal.amount}
+                <input type="number" step="0.5" autoFocus value={debtModal.amount}
                   onChange={e => setDebtModal({ ...debtModal, amount: e.target.value })}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleDebtAdjust(); }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-base font-black text-center"
-                  placeholder="0.00"
-                />
-
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-base font-black text-center" placeholder="0.00" />
                 {debtModal.amount && !isNaN(parseFloat(debtModal.amount)) && (
                   <div className="mt-3 bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg text-[11px] text-center">
                     <div className="text-slate-600">الدين الجديد:</div>
@@ -1420,23 +1692,14 @@ function GroceryApp() {
                 )}
               </div>
             )}
-
             <div className="flex gap-2">
-              <button
-                onClick={handleDebtAdjust}
-                className={`flex-1 font-extrabold py-3 rounded-xl text-xs text-white transition active:scale-95 ${
-                  debtModal.mode === 'add' ? 'bg-emerald-600 hover:bg-emerald-700' :
-                  debtModal.mode === 'subtract' ? 'bg-amber-600 hover:bg-amber-700' :
-                  'bg-red-600 hover:bg-red-700'
-                }`}
-              >
-                {debtModal.mode === 'add' ? '✅ إضافة' :
-                 debtModal.mode === 'subtract' ? '➖ خصم' :
-                 '🔄 تصفير الدين'}
+              <button onClick={handleDebtAdjust} className={`flex-1 font-extrabold py-3 rounded-xl text-xs text-white active:scale-95 ${
+                debtModal.mode === 'add' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                debtModal.mode === 'subtract' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-red-600 hover:bg-red-700'
+              }`}>
+                {debtModal.mode === 'add' ? '✅ إضافة' : debtModal.mode === 'subtract' ? '➖ خصم' : '🔄 تصفير الدين'}
               </button>
-              <button onClick={()=>setDebtModal(null)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-3 rounded-xl text-xs">
-                إلغاء
-              </button>
+              <button onClick={()=>setDebtModal(null)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-3 rounded-xl text-xs">إلغاء</button>
             </div>
           </div>
         </div>
@@ -1471,7 +1734,10 @@ function GroceryApp() {
             <div className="space-y-3">
               <div><label className="block text-xs font-bold mb-1">الإيموجي:</label><input type="text" value={logoModal.emoji || ''} onChange={e=>setLogoModal({ ...logoModal, emoji: e.target.value })} className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-2xl text-center font-bold" maxLength={2} /></div>
               <div className="text-center text-xs text-slate-400">— أو —</div>
-              <div><label className="block text-xs font-bold mb-1">رفع صورة:</label><ImageUploader value={logoModal.dataUrl || ''} onChange={(val)=>setLogoModal({ ...logoModal, dataUrl: val })} label="اختر صورة الشعار" maxSizeKB={200} /></div>
+              <div>
+                <label className="block text-xs font-bold mb-1">رفع صورة:</label>
+                <ImageUploader value={logoModal.dataUrl || ''} onChange={(val)=>setLogoModal({ ...logoModal, dataUrl: val })} label="اختر صورة الشعار" maxDimension={400} maxOutputKB={100} />
+              </div>
             </div>
             <div className="flex gap-2 pt-2">
               <button onClick={handleSaveLogo} className="btn-brand flex-1 font-extrabold py-2.5 rounded-xl text-xs">حفظ 💾</button>
@@ -1555,7 +1821,7 @@ function GroceryApp() {
               </div>
               <div>
                 <label className="block text-xs font-bold mb-1">📷 الصورة:</label>
-                <ImageUploader value={productModal.pendingImage || (productModal.data?.id ? imageMap[String(productModal.data.id)] : '') || ''} onChange={(val)=>setProductModal({ ...productModal, pendingImage: val })} label="اختر صورة المنتج" maxSizeKB={700} />
+                <ImageUploader value={productModal.pendingImage || (productModal.data?.id ? imageMap[String(productModal.data.id)] : '') || ''} onChange={(val)=>setProductModal({ ...productModal, pendingImage: val })} label="اختر صورة المنتج" maxDimension={800} maxOutputKB={500} />
               </div>
               <div className="flex gap-2 pt-2 border-t border-slate-100">
                 <button type="submit" className="btn-brand flex-1 font-extrabold py-2.5 rounded-xl text-xs">حفظ 💾</button>
@@ -1588,8 +1854,11 @@ function GroceryApp() {
               <div className="flex justify-between"><span>الموقع:</span><strong className={selectedLocation?'text-purple-700':'text-slate-400'}>{selectedLocation || 'لم يُحدد'}</strong></div>
             </div>
             <div className="flex gap-2">
-              <button onClick={confirmOrderWithLocation} disabled={!selectedLocation} className="btn-brand flex-1 font-extrabold py-3 rounded-xl text-xs">✅ تأكيد الطلب وإرسال واتساب</button>
-              <button onClick={()=>{ setLocationModalOpen(false); setPendingPaymentMethod(null); setSelectedLocation(''); }} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-3 rounded-xl text-xs">إلغاء</button>
+              <button onClick={confirmOrderWithLocation} disabled={!selectedLocation || isSubmitting}
+                className={`flex-1 font-extrabold py-3 rounded-xl text-xs transition ${!selectedLocation || isSubmitting ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'btn-brand active:scale-95'}`}>
+                {isSubmitting ? '⏳ جارٍ الإرسال...' : '✅ تأكيد الطلب وإرسال واتساب'}
+              </button>
+              <button onClick={()=>{ setLocationModalOpen(false); setPendingPaymentMethod(null); setSelectedLocation(''); }} disabled={isSubmitting} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-3 rounded-xl text-xs">إلغاء</button>
             </div>
           </div>
         </div>
