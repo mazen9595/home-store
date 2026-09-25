@@ -3,7 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>بقالة أم محمد v2.0</title>
+
+<!-- ============================================================
+     📌 ملاحظة الإصدار (Version Note)
+     ============================================================
+     كل مرة يتم فيها تحديث هذا الملف، يجب زيادة رقم الإصدار:
+        v2.0.0 → v2.0.1 → v2.0.2 → v2.0.3 → v2.0.4 ...
+     أو عند التحديثات الكبيرة:
+        v2.0.x → v2.1.0 → v2.2.0 → v3.0.0 ...
+     🔹 الإصدار الحالي: v2.0.1
+     🔹 آخر تحديث: إضافة إدارة الديون الكاملة (إضافة/خصم/تصفير) للمشرف فقط
+     ============================================================ -->
+<title>بقالة أم محمد v2.0.1</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
@@ -43,6 +54,15 @@
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo } = React;
+
+/* ============================================================
+   📌 رقم الإصدار الحالي (Current Version)
+   ============================================================
+   ⚠️ مهم: عند كل تعديل جديد، قم بتحديث هذا الرقم
+   ⚠️ وحدّث أيضاً الرقم في <title> وفي هيدر الموقع وفي الفوتر
+   🔹 الإصدار: v2.0.1
+   ============================================================ */
+const APP_VERSION = '2.0.1';
 
 /* ================== ثوابت ================== */
 const MOHAMMED_PHONE = '966505835077';
@@ -112,7 +132,7 @@ const playSound = (type) => {
   } catch(e) {}
 };
 
-/* ================== ✅ 1) صورة مجهولة (SVG Silhouette) ================== */
+/* ================== صورة مجهولة ================== */
 function AnonymousAvatar({ size = 48, tone = 'slate', className = '' }) {
   const bgColors = {
     slate:   { bg:'#e2e8f0', fg:'#64748b' },
@@ -120,6 +140,7 @@ function AnonymousAvatar({ size = 48, tone = 'slate', className = '' }) {
     zinc:    { bg:'#e4e4e7', fg:'#71717a' },
     neutral: { bg:'#e5e5e5', fg:'#737373' },
     stone:   { bg:'#e7e5e4', fg:'#78716c' },
+    amber:   { bg:'#fef3c7', fg:'#d97706' },
   };
   const colors = bgColors[tone] || bgColors.slate;
   return (
@@ -170,7 +191,9 @@ function ImageUploader({ value, onChange, label = 'اختر صورة', maxSizeKB
   );
 }
 
-/* ================== التطبيق ================== */
+/* ============================================================
+   📌 مكون التطبيق الرئيسي (Main App)
+   ============================================================ */
 function GroceryApp() {
   const [activeTab, setActiveTab] = useState('products');
   const [identityModalOpen, setIdentityModalOpen] = useState(true);
@@ -208,6 +231,10 @@ function GroceryApp() {
   const [pinError, setPinError] = useState('');
   const [payModalMember, setPayModalMember] = useState(null);
   const [payAmountInput, setPayAmountInput] = useState('');
+
+  /* ✅ الإصدار الجديد: نافذة تعديل الديون (إضافة/خصم/تصفير) */
+  const [debtModal, setDebtModal] = useState(null); // { member, mode, amount }
+
   const [notificationModal, setNotificationModal] = useState(null);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState('');
@@ -372,13 +399,13 @@ function GroceryApp() {
     await deleteDoc(doc(dbInstance, COL.CHAT, docId));
   };
 
-  /* =============== ✅ 3) الهوية - إصلاح منطق الدعم =============== */
+  /* =============== الهوية =============== */
   const handleIdentityPick = (user) => {
     playSound('cash');
     if (user === 'الدعم') {
       setPinInput(''); setPinError('');
-      setIdentityModalOpen(false);        // أغلق نافذة الهوية
-      setSupportPinModalOpen(true);       // افتح PIN (فوق)
+      setIdentityModalOpen(false);
+      setSupportPinModalOpen(true);
     } else {
       setCurrentChatUser(user);
       setIdentityModalOpen(false);
@@ -397,7 +424,6 @@ function GroceryApp() {
     } else { playSound('click'); setPinError('كلمة المرور غير صحيحة!'); }
   };
 
-  /* ✅ إذا ألغى المستخدم PIN الدعم، ارجع لنافذة الهوية */
   const handleCancelSupportPin = () => {
     playSound('click');
     setSupportPinModalOpen(false);
@@ -497,6 +523,57 @@ function GroceryApp() {
     catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
 
+  /* ============================================================
+     📌 v2.0.1 جديد: إدارة الديون للمشرف فقط
+     (إضافة / خصم / تصفير)
+     ============================================================ */
+  const handleDebtAdjust = async () => {
+    if (!debtModal) return;
+    const { member, mode, amount } = debtModal;
+
+    let newAmount;
+    let actionMsg = '';
+
+    if (mode === 'reset') {
+      newAmount = 0;
+      actionMsg = `🔄 صفّر المشرف دين (${member.name}).`;
+    } else {
+      const val = parseFloat(amount);
+      if (isNaN(val) || val <= 0) {
+        setNotificationModal({ title:'⚠️', message:'أدخل مبلغاً صحيحاً أكبر من صفر' });
+        return;
+      }
+      if (mode === 'add') {
+        newAmount = (member.totalDebt || 0) + val;
+        actionMsg = `➕ أضاف المشرف ${val.toFixed(2)} ر.س لحساب (${member.name}). الدين الآن: ${newAmount.toFixed(2)} ر.س`;
+      } else if (mode === 'subtract') {
+        newAmount = Math.max(0, (member.totalDebt || 0) - val);
+        actionMsg = `➖ خصم المشرف ${val.toFixed(2)} ر.س من حساب (${member.name}). الدين الآن: ${newAmount.toFixed(2)} ر.س`;
+      }
+    }
+
+    playSound('cash');
+    const newDebts = { ...debtsMap };
+    newDebts[member.name] = newAmount;
+
+    try {
+      await updateStoreDataDoc('debts', newDebts);
+      await addBotChatDoc({
+        sender: 'الدعم',
+        text: actionMsg,
+        timeString: new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'})
+      });
+      setDebtModal(null);
+      setNotificationModal({ title:'✅ تم التعديل', message: actionMsg });
+    } catch (err) {
+      setNotificationModal({ title:'❌ فشل', message: err.message });
+    }
+  };
+
+  /* ============================================================
+     handleSettleDebt — يبقى موجوداً لكن يُستخدم فقط من الإدارة القديمة
+     (لا يوجد زر عام في صفحة الديون للمستخدم العادي)
+     ============================================================ */
   const handleSettleDebt = async () => {
     const amount = parseFloat(payAmountInput);
     if (!payModalMember || isNaN(amount) || amount <= 0) return;
@@ -645,7 +722,8 @@ function GroceryApp() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl md:text-2xl font-black">بقالة أم محمد</h1>
-                <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold">v2.0</span>
+                {/* ✅ رقم الإصدار - يتحدث مع كل ملف جديد */}
+                <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full font-bold">v{APP_VERSION}</span>
               </div>
               <p className="text-xs text-white/90 flex items-center gap-1.5 mt-0.5">
                 <span className={`inline-block w-2 h-2 rounded-full ${statusColor}`}></span>
@@ -679,7 +757,7 @@ function GroceryApp() {
 
       <main className="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
 
-        {/* المنتجات */}
+        {/* ============ المنتجات ============ */}
         {activeTab === 'products' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
@@ -794,7 +872,7 @@ function GroceryApp() {
           </div>
         )}
 
-        {/* ✅ 1) الديون - صور مجهولة */}
+        {/* ============ ✅ الديون - بدون زر تسديد للمستخدم العادي ============ */}
         {activeTab === 'ledger' && (
           <div className="space-y-6">
             <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-6 rounded-3xl flex flex-wrap items-center justify-between gap-4">
@@ -815,7 +893,6 @@ function GroceryApp() {
                   <div key={m.name} className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm relative">
                     <div className="absolute top-3 left-3 bg-slate-100 text-slate-600 text-[11px] font-black px-2.5 py-1 rounded-full">#{i+1}</div>
                     <div className="flex items-center gap-3 mb-4">
-                      {/* ✅ صورة مجهولة بدل الإيموجي */}
                       <AnonymousAvatar size={48} />
                       <h3 className="font-black text-slate-900">{m.name}</h3>
                     </div>
@@ -823,7 +900,10 @@ function GroceryApp() {
                       <span className="text-xs text-slate-500 font-bold">الدين:</span>
                       <span className={`text-lg font-black ${m.totalDebt>0?'text-amber-600':'text-emerald-600'}`}>{m.totalDebt.toFixed(2)} ر.س</span>
                     </div>
-                    <button onClick={()=>{ setPayModalMember(m); setPayAmountInput(m.totalDebt.toString()); }} className="btn-brand w-full font-extrabold py-2 rounded-xl text-xs">💵 تسديد</button>
+                    {/* ✅ ملاحظة بدل زر التسديد - التعديل يتم من لوحة الإدارة فقط */}
+                    <div className="text-center text-[10px] text-slate-400 py-2 border-t border-slate-100">
+                      ℹ️ للتعديل تواصل مع المشرف
+                    </div>
                   </div>
                 ))}
               </div>
@@ -831,7 +911,7 @@ function GroceryApp() {
           </div>
         )}
 
-        {/* الدردشة */}
+        {/* ============ الدردشة ============ */}
         {activeTab === 'chat' && (
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[75vh] max-h-[700px] overflow-hidden">
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between gap-3">
@@ -854,7 +934,6 @@ function GroceryApp() {
                 const isSupport = msg.sender === 'الدعم';
                 return (
                   <div key={msg._id} className={`flex items-end gap-2.5 ${isMine ? 'flex-row-reverse' : ''}`}>
-                    {/* ✅ صورة مجهولة في الدردشة */}
                     <AnonymousAvatar size={32} className={isSupport ? 'ring-2 ring-amber-400' : ''} />
                     <div className={`max-w-[80%] rounded-2xl p-3 shadow-sm ${isMine?'chat-mine':isSupport?'bg-amber-100 text-slate-900 border border-amber-300':'bg-white border border-slate-200'}`}>
                       <div className="flex items-center justify-between gap-4 mb-1">
@@ -875,7 +954,7 @@ function GroceryApp() {
           </div>
         )}
 
-        {/* الطلبات */}
+        {/* ============ الطلبات ============ */}
         {activeTab === 'orders' && (
           <div className="space-y-4">
             <div className="bg-white p-5 rounded-3xl border border-slate-200 flex items-center justify-between">
@@ -936,7 +1015,7 @@ function GroceryApp() {
           </div>
         )}
 
-        {/* الإدارة */}
+        {/* ============ الإدارة ============ */}
         {activeTab === 'admin' && (
           <div className="space-y-6">
             <div className="bg-slate-900 text-white p-6 rounded-3xl flex flex-wrap items-center justify-between gap-4">
@@ -957,6 +1036,64 @@ function GroceryApp() {
                 <button onClick={toggleStoreStatus} className={`${storeStatus.isOpen ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'} font-black px-4 py-2.5 rounded-xl text-xs`}>
                   {storeStatus.isOpen ? '🔒 إغلاق' : '🔓 فتح'}
                 </button>
+              </div>
+            </div>
+
+            {/* ============================================================
+                ✅ v2.0.1 جديد: قسم إدارة دفتر الديون (للمشرف فقط)
+                ============================================================ */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-black text-slate-800 text-sm">📒 إدارة دفتر الديون</h3>
+                <span className="text-[10px] bg-amber-100 text-amber-800 font-black px-2.5 py-1 rounded-full">🔒 المشرف فقط</span>
+              </div>
+
+              {ledgerArray.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-4">لا سجلات ديون بعد</p>
+              ) : (
+                <div className="space-y-3">
+                  {ledgerArray.map(m => (
+                    <div key={m.name} className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <AnonymousAvatar size={40} />
+                          <div>
+                            <div className="font-black text-slate-800 text-sm">{m.name}</div>
+                            <div className="text-[10px] text-slate-500">الدين الحالي</div>
+                          </div>
+                        </div>
+                        <div className={`text-lg font-black ${m.totalDebt > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          {m.totalDebt.toFixed(2)} <span className="text-xs">ر.س</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'add', amount: '' }); }}
+                          className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-extrabold py-2.5 rounded-xl text-[11px] transition active:scale-95"
+                        >
+                          ➕ إضافة
+                        </button>
+                        <button
+                          onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'subtract', amount: '' }); }}
+                          className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-extrabold py-2.5 rounded-xl text-[11px] transition active:scale-95"
+                        >
+                          ➖ خصم
+                        </button>
+                        <button
+                          onClick={() => { playSound('click'); setDebtModal({ member: m, mode: 'reset', amount: '' }); }}
+                          className="bg-red-100 hover:bg-red-200 text-red-700 font-extrabold py-2.5 rounded-xl text-[11px] transition active:scale-95"
+                        >
+                          🔄 تصفير
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl text-[11px] text-blue-800 text-center font-bold">
+                💡 كل عملية تُسجَّل في الدردشة العائلية تلقائياً (إذا كان البوت شغّالاً)
               </div>
             </div>
 
@@ -1024,7 +1161,6 @@ function GroceryApp() {
               </div>
             </div>
 
-            {/* ✅ 7) التقييمات - صور مجهولة */}
             <div className="bg-white rounded-3xl p-5 border border-slate-200 space-y-3">
               <h3 className="font-black text-slate-800 text-sm">⭐ تقييمات العملاء ({ratingsByUser.length})</h3>
               {ratingsByUser.length === 0 ? (
@@ -1078,6 +1214,9 @@ function GroceryApp() {
                 </div>
                 <div className="mt-2 pt-2 border-t border-slate-200 text-[11px] text-slate-500">
                   💡 واتساب محمد: <code className="bg-white px-1 rounded">{MOHAMMED_PHONE}</code>
+                </div>
+                <div className="mt-2 pt-2 border-t border-slate-200 text-[11px] text-slate-500">
+                  📌 إصدار التطبيق: <code className="bg-white px-1 rounded">v{APP_VERSION}</code>
                 </div>
               </div>
             </div>
@@ -1150,13 +1289,11 @@ function GroceryApp() {
         )}
       </main>
 
-      {/* ✅ 2) نافذة "من أنت؟" بدون إيموجي - صور مجهولة */}
+      {/* ✅ نافذة "من أنت؟" */}
       {identityModalOpen && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl space-y-5 text-center">
-            <div className="mx-auto" style={{ width: 80 }}>
-              <AnonymousAvatar size={80} />
-            </div>
+            <div className="mx-auto" style={{ width: 80 }}><AnonymousAvatar size={80} /></div>
             <div>
               <h2 className="text-2xl font-black text-slate-900">من أنت؟</h2>
               <p className="text-sm text-slate-500 mt-1">اختر اسمك للبدء</p>
@@ -1175,7 +1312,7 @@ function GroceryApp() {
         </div>
       )}
 
-      {/* ✅ 3) نافذة PIN الدعم - z-index أعلى من نافذة الهوية */}
+      {/* ✅ PIN الدعم */}
       {supportPinModalOpen && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[110] flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
@@ -1227,7 +1364,84 @@ function GroceryApp() {
         </div>
       )}
 
-      {/* ثيم */}
+      {/* ✅ نافذة تعديل الدين (v2.0.1 جديد) */}
+      {debtModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-black">
+                {debtModal.mode === 'add' ? '➕ إضافة مبلغ للدين' :
+                 debtModal.mode === 'subtract' ? '➖ خصم مبلغ من الدين' :
+                 '🔄 تصفير الدين'}
+              </h3>
+              <button onClick={()=>setDebtModal(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-3">
+              <AnonymousAvatar size={44} />
+              <div>
+                <div className="font-black text-slate-800">{debtModal.member.name}</div>
+                <div className="text-[11px] text-slate-500">
+                  الدين الحالي: <span className="font-black text-amber-600">{debtModal.member.totalDebt.toFixed(2)} ر.س</span>
+                </div>
+              </div>
+            </div>
+
+            {debtModal.mode === 'reset' ? (
+              <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-xs text-red-700 text-center font-bold">
+                ⚠️ هل أنت متأكد من تصفير دين ({debtModal.member.name})؟
+                <br />
+                <span className="text-[10px] text-red-500 mt-1 block">سيصبح الدين 0.00 ر.س</span>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-bold mb-1 text-slate-700">المبلغ (ر.س):</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  autoFocus
+                  value={debtModal.amount}
+                  onChange={e => setDebtModal({ ...debtModal, amount: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleDebtAdjust(); }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-base font-black text-center"
+                  placeholder="0.00"
+                />
+
+                {debtModal.amount && !isNaN(parseFloat(debtModal.amount)) && (
+                  <div className="mt-3 bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg text-[11px] text-center">
+                    <div className="text-slate-600">الدين الجديد:</div>
+                    <div className="font-black text-emerald-700 text-lg">
+                      {(debtModal.mode === 'add'
+                        ? (debtModal.member.totalDebt + parseFloat(debtModal.amount))
+                        : Math.max(0, debtModal.member.totalDebt - parseFloat(debtModal.amount))
+                      ).toFixed(2)} ر.س
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleDebtAdjust}
+                className={`flex-1 font-extrabold py-3 rounded-xl text-xs text-white transition active:scale-95 ${
+                  debtModal.mode === 'add' ? 'bg-emerald-600 hover:bg-emerald-700' :
+                  debtModal.mode === 'subtract' ? 'bg-amber-600 hover:bg-amber-700' :
+                  'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {debtModal.mode === 'add' ? '✅ إضافة' :
+                 debtModal.mode === 'subtract' ? '➖ خصم' :
+                 '🔄 تصفير الدين'}
+              </button>
+              <button onClick={()=>setDebtModal(null)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-3 rounded-xl text-xs">
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {themeModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
@@ -1426,7 +1640,7 @@ function GroceryApp() {
       <footer className="bg-slate-900 text-slate-400 text-center py-4 text-xs mt-6">
         <div className="max-w-7xl mx-auto px-4 flex flex-wrap items-center justify-between gap-2">
           <span>بقالة أم محمد © 2026</span>
-          <span className="bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded-full text-[11px] font-bold">v2.0</span>
+          <span className="bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded-full text-[11px] font-bold">v{APP_VERSION}</span>
         </div>
       </footer>
     </div>
