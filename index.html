@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>بقالة أم محمد v2.3.0</title>
+<title>بقالة أم محمد v2.4.0</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = { darkMode:'class', theme:{ extend:{ fontFamily:{ cairo:['Cairo','sans-serif'] } } } }
@@ -23,6 +23,8 @@
   .spinner-ring { animation: spin-slow 0.9s linear infinite; }
   @keyframes pulse-border { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.4);} 50% { box-shadow: 0 0 0 10px rgba(245,158,11,0);} }
   .notif-pulse { animation: pulse-border 1.8s infinite; }
+  @keyframes pulse-border-red { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4);} 50% { box-shadow: 0 0 0 10px rgba(239,68,68,0);} }
+  .notif-pulse-red { animation: pulse-border-red 1.8s infinite; }
   @keyframes bell-shake { 0%,100% { transform: rotate(0deg);} 25%{ transform: rotate(-12deg);} 75%{ transform: rotate(12deg);} }
   .bell-shake { animation: bell-shake 0.7s ease-in-out infinite; transform-origin: top center; }
   @keyframes slideDown { from { transform: translateY(-100%); opacity:0;} to { transform: translateY(0); opacity:1;} }
@@ -49,7 +51,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo } = React;
 
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
 const MOHAMMED_PHONE = '966505835077';
 
 const LS_KEYS = {
@@ -59,6 +61,7 @@ const LS_KEYS = {
   DISMISSED_BROADCASTS: 'umm_dismissed_broadcasts',
   LAST_CHAT_SEEN: 'umm_last_chat_seen',
   NOTIF_ASKED: 'umm_notif_asked',
+  DISMISSED_LOW_STOCK: 'umm_dismissed_low_stock',
 };
 
 const LOCATIONS = ['غرفة مازن','غرفة رتال','غرفة مهاب','غرفة ماما وبابا','الصالة','الدور الأول','المطبخ','الملحق الخارجي','الحوش','السطح'];
@@ -249,6 +252,58 @@ function ImageUploader({ value, onChange, label='اختر صورة', maxDimensio
   );
 }
 
+/* ✅ v2.4.0: بطاقة إشعار المخزون المنخفض */
+function LowStockNotification({ products, onDismiss, onOpenStockManager }) {
+  return (
+    <div className="notif-pulse-red relative bg-gradient-to-br from-red-50 via-orange-50 to-amber-50 border-2 border-red-400 rounded-3xl p-3 md:p-5 shadow-xl space-y-3">
+      <div className="flex items-start justify-between gap-2 md:gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
+          <div className="w-10 h-10 md:w-14 md:h-14 bg-red-500 rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-3xl shadow-md">
+            <span className="bell-shake inline-block">⚠️</span>
+          </div>
+          <div>
+            <h3 className="font-black text-red-900 text-sm md:text-xl">مخزون منخفض!</h3>
+            <p className="text-[10px] md:text-xs text-red-700 mt-0.5 font-bold">
+              {products.length === 1 ? 'منتج واحد قارب على النفاذ' : `${products.length} منتجات قاربت على النفاذ`}
+            </p>
+          </div>
+        </div>
+        <button onClick={onDismiss}
+          className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-white border-2 border-red-300 text-red-700 hover:bg-red-100 flex items-center justify-center font-black text-sm md:text-lg shrink-0">✕</button>
+      </div>
+
+      <div className="bg-white/80 rounded-xl md:rounded-2xl p-2 md:p-3 border border-red-200 space-y-1.5 md:space-y-2">
+        {products.map(p => {
+          const stock = Number(p.stock) || 0;
+          return (
+            <div key={p.id} className="flex items-center justify-between gap-2 text-xs md:text-sm">
+              <span className="flex items-center gap-1.5 md:gap-2 font-bold min-w-0">
+                <span className="text-lg md:text-xl">{p.emoji || '🛒'}</span>
+                <span className="truncate">{p.name}</span>
+              </span>
+              <span className={`font-black px-2 md:px-3 py-0.5 md:py-1 rounded-lg shrink-0 ${stock <= 0 ? 'bg-red-500 text-white' : 'bg-amber-500 text-white'}`}>
+                {stock <= 0 ? '❌ نفذت' : `⚠️ ${stock} فقط`}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex gap-2 pt-1 md:pt-2 border-t-2 border-red-200">
+        <button onClick={onOpenStockManager}
+          className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-2 md:py-3 rounded-xl md:rounded-2xl text-xs md:text-sm flex items-center justify-center gap-1 md:gap-2">
+          <span className="text-sm md:text-lg">📦</span>
+          <span>فتح إدارة المخزون</span>
+        </button>
+        <button onClick={onDismiss}
+          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-black py-2 md:py-3 px-3 md:px-4 rounded-xl md:rounded-2xl text-[10px] md:text-xs">
+          تخطي مؤقتاً
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NewOrderNotification({ order, onStatusChange, onDismiss, onComplete }) {
   const currentIdx = ORDER_STATUSES.findIndex(s => s.key === order.status);
   return (
@@ -371,6 +426,14 @@ function GroceryApp() {
   const [debtRequests, setDebtRequests] = useState([]);
   const [broadcasts, setBroadcasts] = useState([]);
 
+  /* ✅ v2.4.0: حسابات المستخدمين */
+  const [userAccounts, setUserAccounts] = useState({});
+
+  /* ✅ v2.4.0: نافذة الإعدادات */
+  const [settingsModal, setSettingsModal] = useState(null);
+  /* ✅ v2.4.0: نافذة كلمة المرور عند الدخول */
+  const [passwordPrompt, setPasswordPrompt] = useState(null);
+
   const [adminPin, setAdminPin] = useState('3421');
   const [pinChangeModal, setPinChangeModal] = useState(null);
 
@@ -414,10 +477,13 @@ function GroceryApp() {
   const [dismissedNotifs, setDismissedNotifs] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_KEYS.DISMISSED_NOTIFS)||'[]'); } catch { return []; } });
   const [dismissedBroadcasts, setDismissedBroadcasts] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_KEYS.DISMISSED_BROADCASTS)||'[]'); } catch { return []; } });
   const [lastChatSeen, setLastChatSeen] = useState(() => { try { return Number(localStorage.getItem(LS_KEYS.LAST_CHAT_SEEN)||0); } catch { return 0; } });
+  /* ✅ v2.4.0: تنبيهات المخزون المخفية */
+  const [dismissedLowStock, setDismissedLowStock] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_KEYS.DISMISSED_LOW_STOCK)||'[]'); } catch { return []; } });
 
   useEffect(() => { try { localStorage.setItem(LS_KEYS.DISMISSED_NOTIFS, JSON.stringify(dismissedNotifs)); } catch {} }, [dismissedNotifs]);
   useEffect(() => { try { localStorage.setItem(LS_KEYS.DISMISSED_BROADCASTS, JSON.stringify(dismissedBroadcasts)); } catch {} }, [dismissedBroadcasts]);
   useEffect(() => { try { localStorage.setItem(LS_KEYS.LAST_CHAT_SEEN, String(lastChatSeen)); } catch {} }, [lastChatSeen]);
+  useEffect(() => { try { localStorage.setItem(LS_KEYS.DISMISSED_LOW_STOCK, JSON.stringify(dismissedLowStock)); } catch {} }, [dismissedLowStock]);
 
   const newOrderNotifications = useMemo(() => orders.filter(o => {
     if (!o.status) return false;
@@ -435,9 +501,9 @@ function GroceryApp() {
 
   const visibleBroadcasts = useMemo(() => broadcasts.filter(b => !dismissedBroadcasts.includes(b.id)), [broadcasts, dismissedBroadcasts]);
 
-  /* ✅ v2.3.0: إحصائيات المخزون */
+  /* ✅ v2.4.0: منتجات المخزون المنخفض (غير المخفية) */
   const lowStockProducts = useMemo(() => products.filter(p => (Number(p.stock)||0) <= 3), [products]);
-  const outOfStockCount = useMemo(() => products.filter(p => (Number(p.stock)||0) <= 0).length, [products]);
+  const visibleLowStockAlerts = useMemo(() => lowStockProducts.filter(p => !dismissedLowStock.includes(p.id)), [lowStockProducts, dismissedLowStock]);
 
   useEffect(() => {
     if (activeTab === 'chat' && chatMessages.length > 0) {
@@ -522,6 +588,16 @@ function GroceryApp() {
     lastDebtReqCountRef.current = debtRequests.length;
   }, [debtRequests.length, isAdminAuthenticated, soundsConfig]);
 
+  /* ✅ v2.4.0: إشعار صوتي للـ low stock */
+  const lastLowStockCountRef = useRef(0);
+  useEffect(() => {
+    if (isAdminAuthenticated && visibleLowStockAlerts.length > lastLowStockCountRef.current && lastLowStockCountRef.current > 0) {
+      playPreset('alert', 0.15);
+      showBrowserNotification('⚠️ مخزون منخفض!', `${visibleLowStockAlerts.length} منتجات قاربت على النفاذ`, { icon:storeLogo.dataUrl||undefined, tag:'lowstock-'+Date.now() });
+    }
+    lastLowStockCountRef.current = visibleLowStockAlerts.length;
+  }, [visibleLowStockAlerts.length, isAdminAuthenticated]);
+
   const lastBroadcastRef = useRef(null);
   useEffect(() => {
     if (visibleBroadcasts.length > 0) {
@@ -574,15 +650,15 @@ function GroceryApp() {
           const pr = allDocs.find(d => d._id==='products' || d._id==='productList');
           if (pr) {
             const list = pr.list || pr.products || (Array.isArray(pr)?pr:null);
-            if (Array.isArray(list)) {
-              /* ✅ تأكد أن كل منتج عنده stock */
-              setProducts(list.map(p => ({ ...p, stock: typeof p.stock === 'number' ? p.stock : 0 })));
-            }
+            if (Array.isArray(list)) setProducts(list.map(p => ({ ...p, stock: typeof p.stock === 'number' ? p.stock : 0 })));
           }
           const imgs = {}; allDocs.filter(d => d._id.startsWith('productImage_') && d.dataUrl).forEach(d => { const pid = d.productId != null ? String(d.productId) : d._id.replace('productImage_',''); imgs[pid] = d.dataUrl; });
           setImageMap(imgs);
           const sc = allDocs.find(d => d._id==='soundsConfig'); if (sc && sc.config) setSoundsConfig({ ...DEFAULT_SOUNDS, ...sc.config });
           const pinDoc = allDocs.find(d => d._id==='adminPinConfig'); if (pinDoc && pinDoc.pin) setAdminPin(pinDoc.pin);
+          /* ✅ v2.4.0: قراءة حسابات المستخدمين */
+          const ua = allDocs.find(d => d._id==='userAccounts');
+          if (ua && ua.accounts && typeof ua.accounts === 'object') setUserAccounts(ua.accounts);
           const dr = allDocs.find(d => d._id==='debtPaymentRequests'); if (dr && Array.isArray(dr.list)) setDebtRequests(dr.list);
           const br = allDocs.find(d => d._id==='broadcastNotifications'); if (br && Array.isArray(br.list)) setBroadcasts([...br.list].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)).slice(0, 20));
           setRawStats(s => ({ ...s, data: allDocs.length }));
@@ -644,6 +720,13 @@ function GroceryApp() {
   const myDebt = useMemo(() => currentChatUser && currentChatUser !== 'الدعم' ? (debtsMap[currentChatUser] || 0) : 0, [currentChatUser, debtsMap]);
   const hasPendingDebtRequest = useMemo(() => currentChatUser && debtRequests.some(r => r.name === currentChatUser), [currentChatUser, debtRequests]);
 
+  /* ✅ v2.4.0: الاسم المعروض للمستخدم الحالي */
+  const myDisplayName = useMemo(() => {
+    if (!currentChatUser) return '';
+    const acc = userAccounts[currentChatUser];
+    return acc?.displayName || currentChatUser;
+  }, [currentChatUser, userAccounts]);
+
   const ratingsByUser = useMemo(() => {
     const map = {};
     orders.forEach(o => {
@@ -689,75 +772,76 @@ function GroceryApp() {
     await deleteDoc(doc(dbInstance, COL.CHAT, docId));
   };
 
-  /* ✅ v2.3.0: إدارة المخزون */
-  const setProductStock = async (productId, newStock) => {
-    const num = Math.max(0, parseInt(newStock) || 0);
-    const newList = products.map(p => String(p.id) === String(productId) ? { ...p, stock: num } : p);
-    try { await updateStoreDataDoc('products', { list: newList }); }
-    catch (err) { console.error('setStock:', err); }
+  /* ✅ v2.4.0: حفظ إعدادات حساب المستخدم */
+  const saveUserAccount = async (userName, accountData) => {
+    const newAccounts = { ...userAccounts, [userName]: { ...(userAccounts[userName] || {}), ...accountData, updatedAt: Date.now() } };
+    await updateStoreDataDoc('userAccounts', { accounts: newAccounts });
   };
 
-  const adjustProductStock = async (productId, delta) => {
-    const prod = products.find(p => String(p.id) === String(productId));
-    if (!prod) return;
-    const current = Number(prod.stock) || 0;
-    const newStock = Math.max(0, current + delta);
-    await setProductStock(productId, newStock);
+  /* ✅ v2.4.0: الدخول بعد التحقق */
+  const proceedLogin = (userName) => {
+    if (userName === 'الدعم') {
+      setPinInput(''); setPinError(''); setSupportPinModalOpen(true);
+    } else {
+      setCurrentChatUser(userName);
+      setIdentityModalOpen(false);
+      try { localStorage.setItem(LS_KEYS.DEVICE_USER, userName); } catch {}
+    }
   };
 
-  /* ✅ خصم من المخزون عند تأكيد طلب */
-  const subtractStockForOrder = async (orderItems) => {
-    if (!orderItems || !orderItems.length) return;
-    const newList = products.map(prod => {
-      const ordered = orderItems.find(it => String(it.id) === String(prod.id));
-      if (ordered) {
-        const currentStock = Number(prod.stock) || 0;
-        return { ...prod, stock: Math.max(0, currentStock - ordered.qty) };
-      }
-      return prod;
-    });
-    try { await updateStoreDataDoc('products', { list: newList }); }
-    catch (err) { console.error('subtractStock:', err); }
+  /* ✅ v2.4.0: محاولة الدخول مع فحص كلمة المرور */
+  const attemptLogin = (userName) => {
+    const acc = userAccounts[userName];
+    if (acc && acc.password && acc.password.length > 0) {
+      setPasswordPrompt({ userName, input: '', error: '' });
+    } else {
+      proceedLogin(userName);
+    }
   };
 
-  /* ✅ إرجاع للمخزون عند الإلغاء أو الحذف */
-  const restoreStockForOrder = async (orderItems) => {
-    if (!orderItems || !orderItems.length) return;
-    const newList = products.map(prod => {
-      const ordered = orderItems.find(it => String(it.id) === String(prod.id));
-      if (ordered) {
-        const currentStock = Number(prod.stock) || 0;
-        return { ...prod, stock: currentStock + ordered.qty };
-      }
-      return prod;
-    });
-    try { await updateStoreDataDoc('products', { list: newList }); }
-    catch (err) { console.error('restoreStock:', err); }
+  const handleVerifyUserPassword = (e) => {
+    if (e) e.preventDefault();
+    if (!passwordPrompt) return;
+    const acc = userAccounts[passwordPrompt.userName];
+    if (acc && acc.password === passwordPrompt.input) {
+      playSound('cash');
+      const name = passwordPrompt.userName;
+      setPasswordPrompt(null);
+      proceedLogin(name);
+    } else {
+      playSound('click');
+      setPasswordPrompt({ ...passwordPrompt, error: 'كلمة المرور غير صحيحة!' });
+    }
+  };
+
+  const handleIdentityPick = (user) => {
+    playSound('cash');
+    attemptLogin(user);
   };
 
   const handleUserChange = (newUser) => {
     playSound('click');
     const wasAdmin = currentChatUser === 'الدعم';
     const goingToAdmin = newUser === 'الدعم';
+
+    /* قفل الإدارة عند مغادرتها */
     if (wasAdmin && !goingToAdmin) {
       setIsAdminAuthenticated(false);
       try { localStorage.removeItem(LS_KEYS.ADMIN_TOKEN); } catch {}
       setActiveTab('products');
     }
-    if (goingToAdmin) {
-      if (isAdminAuthenticated && wasAdmin) return;
-      setPinInput(''); setPinError(''); setSupportPinModalOpen(true); return;
-    }
-    setCurrentChatUser(newUser);
-    try { localStorage.setItem(LS_KEYS.DEVICE_USER, newUser); } catch {}
+
+    /* إذا رجع للدعم وهو مفعّل → ادخل مباشرة */
+    if (goingToAdmin && isAdminAuthenticated && wasAdmin) return;
+
+    /* خروج من الحساب الحالي */
+    setCurrentChatUser('');
+    try { localStorage.removeItem(LS_KEYS.DEVICE_USER); } catch {}
+
+    /* محاولة الدخول للحساب الجديد */
+    attemptLogin(newUser);
   };
 
-  const handleIdentityPick = (user) => {
-    playSound('cash');
-    try { localStorage.setItem(LS_KEYS.DEVICE_USER, user); } catch {}
-    if (user === 'الدعم') { setPinInput(''); setPinError(''); setIdentityModalOpen(false); setSupportPinModalOpen(true); }
-    else { setCurrentChatUser(user); setIdentityModalOpen(false); }
-  };
   const handleVerifySupportPin = (e) => {
     e.preventDefault();
     if (pinInput === adminPin) {
@@ -775,8 +859,46 @@ function GroceryApp() {
     playSound('click');
     if (dbInstance) { try { const { doc, deleteDoc } = window.FirebaseSDK; deleteDoc(doc(dbInstance, COL.PRESENCE, sessionId)).catch(()=>{}); } catch {} }
     try { localStorage.removeItem(LS_KEYS.DEVICE_USER); localStorage.removeItem(LS_KEYS.ADMIN_TOKEN); localStorage.removeItem(LS_KEYS.LAST_CHAT_SEEN); } catch {}
-    setCurrentChatUser(''); setIsAdminAuthenticated(false); setIdentityModalOpen(true); setActiveTab('products');
+    setCurrentChatUser(''); setIsAdminAuthenticated(false); setIdentityModalOpen(true); setActiveTab('products'); setSettingsModal(null);
   };
+
+  /* ✅ v2.4.0: حفظ إعدادات الحساب */
+  const handleSaveAccountSettings = async () => {
+    if (!settingsModal || !currentChatUser) return;
+    const { displayName, newPassword, confirmPassword, currentPassword, removePassword } = settingsModal;
+
+    /* تحقق من كلمة المرور الحالية إذا وُجدت */
+    const acc = userAccounts[currentChatUser] || {};
+    if (acc.password && acc.password.length > 0 && !removePassword) {
+      if (currentPassword !== acc.password) {
+        setNotificationModal({ title:'⚠️', message:'كلمة المرور الحالية غير صحيحة!' }); return;
+      }
+    }
+
+    /* تحقق من التطابق */
+    if (!removePassword && newPassword && newPassword !== confirmPassword) {
+      setNotificationModal({ title:'⚠️', message:'كلمتا المرور غير متطابقتين!' }); return;
+    }
+
+    if (!removePassword && newPassword && newPassword.length < 4) {
+      setNotificationModal({ title:'⚠️', message:'كلمة المرور يجب أن تكون 4 أحرف على الأقل.' }); return;
+    }
+
+    const updated = {
+      displayName: (displayName || currentChatUser).trim(),
+    };
+    if (removePassword) updated.password = '';
+    else if (newPassword) updated.password = newPassword;
+    else updated.password = acc.password || '';
+
+    try {
+      await saveUserAccount(currentChatUser, updated);
+      playSound('cash');
+      setSettingsModal(null);
+      setNotificationModal({ title:'✅ تم الحفظ', message:'تم حفظ إعدادات حسابك بنجاح.' });
+    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+  };
+
   const handleChangePin = async () => {
     if (!pinChangeModal) return;
     const { current, newPin, confirm } = pinChangeModal;
@@ -884,16 +1006,54 @@ function GroceryApp() {
     try { await updateStoreDataDoc('products', { list:newList }); setNotificationModal({ title:'✅ حُذف', message:name }); }
     catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
-  /* ✅ عند حذف طلب غير ملغي → إرجاع المخزون */
+
+  /* ✅ v2.4.0: تعديل المخزون من قسم "إدارة المخزون" فقط */
+  const setProductStock = async (productId, newStock) => {
+    const num = Math.max(0, parseInt(newStock) || 0);
+    const newList = products.map(p => String(p.id) === String(productId) ? { ...p, stock: num } : p);
+    try { await updateStoreDataDoc('products', { list: newList }); }
+    catch (err) { console.error('setStock:', err); }
+  };
+  const adjustProductStock = async (productId, delta) => {
+    const prod = products.find(p => String(p.id) === String(productId));
+    if (!prod) return;
+    const current = Number(prod.stock) || 0;
+    await setProductStock(productId, Math.max(0, current + delta));
+  };
+
+  const subtractStockForOrder = async (orderItems) => {
+    if (!orderItems || !orderItems.length) return;
+    const newList = products.map(prod => {
+      const ordered = orderItems.find(it => String(it.id) === String(prod.id));
+      if (ordered) {
+        const currentStock = Number(prod.stock) || 0;
+        return { ...prod, stock: Math.max(0, currentStock - ordered.qty) };
+      }
+      return prod;
+    });
+    try { await updateStoreDataDoc('products', { list: newList }); } catch (err) { console.error('subtractStock:', err); }
+  };
+
+  const restoreStockForOrder = async (orderItems) => {
+    if (!orderItems || !orderItems.length) return;
+    const newList = products.map(prod => {
+      const ordered = orderItems.find(it => String(it.id) === String(prod.id));
+      if (ordered) {
+        const currentStock = Number(prod.stock) || 0;
+        return { ...prod, stock: currentStock + ordered.qty };
+      }
+      return prod;
+    });
+    try { await updateStoreDataDoc('products', { list: newList }); } catch (err) { console.error('restoreStock:', err); }
+  };
+
   const handleDeleteOrder = async (docId, buyer) => {
     playSound('click');
     if (!confirm(`حذف طلب (${buyer})؟`)) return;
     const ord = orders.find(o => o._id === docId);
     const wasCancelled = (ord?.status || '').includes('ملغي');
     try {
-      if (!wasCancelled && ord?.items?.length) {
-        await restoreStockForOrder(ord.items);
-      }
+      if (!wasCancelled && ord?.items?.length) await restoreStockForOrder(ord.items);
       await deleteOrderDoc(docId);
       setNotificationModal({ title:'✅ حُذف', message:`حُذف طلب (${buyer})${!wasCancelled ? ' وأُرجع المخزون' : ''}.` });
     } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
@@ -939,29 +1099,19 @@ function GroceryApp() {
     catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
   const handleDeleteChatMessage = async (docId) => { playSound('click'); try { await deleteChatDoc(docId); } catch(e){} };
-
-  /* ✅ v2.3.0: إضافة للسلة مع فحص المخزون */
   const addToCart = (product) => {
     const stock = Number(product.stock) || 0;
-    if (stock <= 0) {
-      setNotificationModal({ title:'❌ نفذت الكمية', message:`(${product.name}) غير متوفر حالياً.` });
-      return;
-    }
+    if (stock <= 0) { setNotificationModal({ title:'❌ نفذت الكمية', message:`(${product.name}) غير متوفر حالياً.` }); return; }
     playSound('click');
     setCart(prev => {
       const ex = prev.find(i => String(i.id)===String(product.id));
       if (ex) {
-        if (ex.qty >= stock) {
-          setNotificationModal({ title:'⚠️ الكمية غير كافية', message:`المتوفر فقط ${stock} من (${product.name}).` });
-          return prev;
-        }
+        if (ex.qty >= stock) { setNotificationModal({ title:'⚠️ الكمية غير كافية', message:`المتوفر فقط ${stock} من (${product.name}).` }); return prev; }
         return prev.map(i => String(i.id)===String(product.id) ? { ...i, qty:i.qty+1 } : i);
       }
       return [...prev, { ...product, qty:1 }];
     });
   };
-
-  /* ✅ فحص المخزون عند الزيادة في السلة */
   const updateCartQty = (id, delta) => {
     playSound('click');
     setCart(prev => {
@@ -970,23 +1120,17 @@ function GroceryApp() {
       if (delta > 0) {
         const prod = products.find(p => String(p.id) === String(id));
         const stock = prod ? (Number(prod.stock) || 0) : 0;
-        if (item.qty + delta > stock) {
-          setNotificationModal({ title:'⚠️ الكمية غير كافية', message:`المتوفر فقط ${stock} من (${item.name}).` });
-          return prev;
-        }
+        if (item.qty + delta > stock) { setNotificationModal({ title:'⚠️ الكمية غير كافية', message:`المتوفر فقط ${stock} من (${item.name}).` }); return prev; }
       }
       return prev.map(i => String(i.id)===String(id) ? (i.qty+delta>0?{...i,qty:i.qty+delta}:null) : i).filter(Boolean);
     });
   };
-
   const startCheckout = (paymentKey) => {
     if (!cart.length) return;
     if (!storeStatus.isOpen) { setNotificationModal({ title:'🚫 مغلق', message:'المتجر مغلق.' }); return; }
     playSound('click');
     setCartDrawerOpen(false); setPendingPaymentMethod(paymentKey); setSelectedLocation(''); setLocationModalOpen(true);
   };
-
-  /* ✅ v2.3.0: خصم المخزون عند تأكيد الطلب */
   const confirmOrderWithLocation = async () => {
     if (isSubmitting) return;
     if (!selectedLocation) { setNotificationModal({ title:'⚠️', message:'اختر موقعك.' }); return; }
@@ -1003,7 +1147,6 @@ function GroceryApp() {
     const orderData = { buyer:buyerForOrder, items, totalAmount:totalForOrder, status:ORDER_STATUSES[0].key, location:locationForOrder, paymentMethod:paymentForOrder, orderTime:timeNow };
     try {
       const orderId = await addOrderDoc(orderData);
-      /* ✅ خصم من المخزون */
       await subtractStockForOrder(items);
       if (isDebt) {
         const newDebts = { ...debtsMap };
@@ -1015,7 +1158,6 @@ function GroceryApp() {
     } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
     finally { setIsSubmitting(false); }
   };
-
   const submitRating = async () => {
     if (!ratingModal) return;
     playSound('cash');
@@ -1023,8 +1165,6 @@ function GroceryApp() {
     closeRatingAndNavigate();
   };
   const closeRatingAndNavigate = () => { setRatingModal(null); setActiveTab('orders'); };
-
-  /* ✅ v2.3.0: إرجاع المخزون عند إلغاء الطلب */
   const handleUpdateOrderStatus = async (docId, newStatus) => {
     playSound('cash');
     const ord = orders.find(o => o._id === docId);
@@ -1032,13 +1172,9 @@ function GroceryApp() {
     const willBeCancelled = (newStatus || '').includes('ملغي');
     try {
       await updateOrderDoc(docId, { status:newStatus });
-      /* إذا تغيرت الحالة من غير ملغي إلى ملغي → أعد المخزون */
-      if (!wasCancelled && willBeCancelled && ord?.items?.length) {
-        await restoreStockForOrder(ord.items);
-      }
+      if (!wasCancelled && willBeCancelled && ord?.items?.length) await restoreStockForOrder(ord.items);
     } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
-
   const dismissNotification = (orderId) => { playSound('click'); setDismissedNotifs(prev => prev.includes(orderId) ? prev : [...prev, orderId]); };
   const completeOrderFromNotif = async (orderId) => { playSound('cash'); await handleUpdateOrderStatus(orderId, 'أتممت الطلب ✅'); };
 
@@ -1093,9 +1229,9 @@ function GroceryApp() {
                       <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-emerald-300 rounded-full animate-pulse"></span>
                       {onlineUsers.length} متصل
                     </div>
-                    {isAdmin && outOfStockCount > 0 && (
+                    {isAdmin && lowStockProducts.length > 0 && (
                       <div className="flex items-center gap-1 bg-red-500/40 text-red-50 border border-red-300/50 px-1.5 md:px-2.5 py-0.5 rounded-full text-[8px] md:text-[10px] font-black whitespace-nowrap">
-                        ⚠️ {outOfStockCount} نفذت
+                        ⚠️ {lowStockProducts.length} مخزون منخفض
                       </div>
                     )}
                   </div>
@@ -1105,17 +1241,16 @@ function GroceryApp() {
               <div className="flex md:hidden items-center gap-1 shrink-0">
                 <div className="bg-black/20 backdrop-blur-sm border border-white/20 px-1.5 py-1 rounded-xl flex items-center gap-1">
                   <select value={currentChatUser} onChange={e=>handleUserChange(e.target.value)}
-                    className="bg-white/20 text-white font-extrabold text-[11px] px-2 py-1 rounded-lg border border-white/30 focus:outline-none cursor-pointer max-w-[70px]">
+                    className="bg-white/20 text-white font-extrabold text-[11px] px-2 py-1 rounded-lg border border-white/30 focus:outline-none cursor-pointer max-w-[80px]">
                     {ALL_CHAT_USERS.map(u => <option key={u} value={u} className="text-slate-900">{u === 'الدعم' ? '👑 دعم' : u}</option>)}
                   </select>
                   {currentChatUser && (
-                    <button onClick={handleLogout} title="خروج" className="text-white/70 hover:text-white text-sm w-5 h-5 flex items-center justify-center rounded-full hover:bg-white/10">🚪</button>
+                    <button onClick={()=>{ playSound('click'); setSettingsModal({ displayName: myDisplayName, newPassword:'', confirmPassword:'', currentPassword:'', removePassword:false }); }} title="إعدادات" className="text-white/90 hover:text-white text-sm w-5 h-5 flex items-center justify-center rounded-full hover:bg-white/10">⚙️</button>
                   )}
                 </div>
                 {currentChatUser && !isAdmin && myDebt > 0 && (
                   <button onClick={()=>{ playSound('click'); setDebtDetailsOpen(true); }}
-                    className={`flex items-center gap-0.5 px-2 py-1.5 rounded-xl text-[10px] font-black shadow-md transition active:scale-95 border ${hasPendingDebtRequest?'bg-amber-100 border-amber-400 text-amber-900':'bg-gradient-to-l from-amber-400 to-amber-500 border-amber-300 text-slate-950 debt-glow'}`}
-                    title="دينك">
+                    className={`flex items-center gap-0.5 px-2 py-1.5 rounded-xl text-[10px] font-black shadow-md transition active:scale-95 border ${hasPendingDebtRequest?'bg-amber-100 border-amber-400 text-amber-900':'bg-gradient-to-l from-amber-400 to-amber-500 border-amber-300 text-slate-950 debt-glow'}`}>
                     <span>{hasPendingDebtRequest ? '⏳' : '💵'}</span>
                     <span>{myDebt.toFixed(0)}</span>
                   </button>
@@ -1130,6 +1265,9 @@ function GroceryApp() {
                   className="bg-white/20 text-white font-extrabold text-sm px-3 py-1 rounded-xl border border-white/30 focus:outline-none cursor-pointer">
                   {ALL_CHAT_USERS.map(u => <option key={u} value={u} className="text-slate-900">{u === 'الدعم' ? '👑 الدعم' : u}</option>)}
                 </select>
+                {currentChatUser && (
+                  <button onClick={()=>{ playSound('click'); setSettingsModal({ displayName: myDisplayName, newPassword:'', confirmPassword:'', currentPassword:'', removePassword:false }); }} title="إعدادات حسابي" className="text-white/90 hover:text-white text-lg w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/15 transition">⚙️</button>
+                )}
                 {currentChatUser && (
                   <button onClick={handleLogout} title="تسجيل الخروج" className="text-white/70 hover:text-white text-lg w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10">🚪</button>
                 )}
@@ -1153,9 +1291,9 @@ function GroceryApp() {
                       {unreadChatCount > 9 ? '9+' : unreadChatCount}
                     </span>
                   )}
-                  {k==='admin' && isAdmin && newOrderNotifications.length + debtRequests.length > 0 && (
+                  {k==='admin' && isAdmin && (newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length) > 0 && (
                     <span className="absolute -top-1 -left-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
-                      {newOrderNotifications.length + debtRequests.length > 9 ? '9+' : newOrderNotifications.length + debtRequests.length}
+                      {newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length > 9 ? '9+' : newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length}
                     </span>
                   )}
                 </button>
@@ -1232,7 +1370,6 @@ function GroceryApp() {
                       <div className="relative w-full h-32 md:h-48 bg-white rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-3 border border-slate-100 flex items-center justify-center">
                         {imgSrc ? (<img src={imgSrc} alt={p.name} className="w-full h-full object-contain p-1 md:p-2" onError={e=>{ e.target.style.display='none'; if (e.target.nextElementSibling) e.target.nextElementSibling.style.display='flex'; }} />) : null}
                         <div className="w-full h-full flex items-center justify-center text-3xl md:text-5xl bg-slate-50" style={{ display:imgSrc?'none':'flex' }}>{p.emoji || '🛒'}</div>
-                        {/* ✅ v2.3.0: شارة المخزون */}
                         <div className={`absolute top-1.5 right-1.5 md:top-2 md:right-2 px-2 py-0.5 rounded-full text-[9px] md:text-[11px] font-black border-2 shadow-md ${stockBadge.bg}`}>
                           {stockBadge.text}
                         </div>
@@ -1262,7 +1399,7 @@ function GroceryApp() {
                 <div className="w-9 h-9 md:w-10 md:h-10 bg-brand rounded-xl md:rounded-2xl flex items-center justify-center text-lg md:text-xl shrink-0">💬</div>
                 <div className="min-w-0">
                   <h3 className="font-black text-xs md:text-base truncate">الدردشة العائلية</h3>
-                  <p className="text-[10px] md:text-[11px] text-slate-300 truncate">أنت: <span className="text-amber-400 font-black">{currentChatUser}</span></p>
+                  <p className="text-[10px] md:text-[11px] text-slate-300 truncate">أنت: <span className="text-amber-400 font-black">{myDisplayName}</span></p>
                 </div>
               </div>
               <div className={`text-[9px] md:text-[10px] font-black px-2 md:px-2.5 py-1 rounded-full shrink-0 ${botConfig.enabled?'bg-emerald-500/20 text-emerald-300':'bg-red-500/20 text-red-300'}`}>
@@ -1275,12 +1412,13 @@ function GroceryApp() {
               ) : chatMessages.map(msg => {
                 const isMine = msg.sender === currentChatUser;
                 const isSupport = msg.sender === 'الدعم';
+                const senderDisplay = userAccounts[msg.sender]?.displayName || msg.sender;
                 return (
                   <div key={msg._id} className={`flex items-end gap-1.5 md:gap-2.5 ${isMine?'flex-row-reverse':''}`}>
                     <AnonymousAvatar size={28} className={isSupport?'ring-2 ring-amber-400':''} />
                     <div className={`max-w-[80%] rounded-2xl p-2 md:p-3 shadow-sm ${isMine?'chat-mine':isSupport?'bg-amber-100 text-slate-900 border border-amber-300':'bg-white border border-slate-200'}`}>
                       <div className="flex items-center justify-between gap-2 md:gap-4 mb-0.5 md:mb-1">
-                        <span className={`text-[10px] md:text-[11px] font-black ${isMine?'text-white/85':'text-slate-500'}`}>{isSupport?'⭐ الدعم':msg.sender}</span>
+                        <span className={`text-[10px] md:text-[11px] font-black ${isMine?'text-white/85':'text-slate-500'}`}>{isSupport?'⭐ الدعم':senderDisplay}</span>
                         <span className={`text-[9px] md:text-[10px] ${isMine?'text-white/75':'text-slate-400'}`}>{msg.timeString || tsToTime(msg.timestamp)}</span>
                       </div>
                       <p className="text-xs md:text-sm font-semibold whitespace-pre-wrap">{msg.text}</p>
@@ -1291,7 +1429,7 @@ function GroceryApp() {
               <div ref={chatEndRef} />
             </div>
             <form onSubmit={handleSendChatMessage} className="p-2 md:p-3 bg-white border-t border-slate-200 flex gap-1.5 md:gap-2">
-              <input type="text" name="chatInput" placeholder={`اكتب باسم (${currentChatUser})...`} className="flex-1 bg-slate-100 border border-slate-200 rounded-xl md:rounded-2xl px-3 md:px-4 py-2 md:py-2.5 text-xs md:text-sm focus:outline-none min-w-0" />
+              <input type="text" name="chatInput" placeholder={`اكتب باسم (${myDisplayName})...`} className="flex-1 bg-slate-100 border border-slate-200 rounded-xl md:rounded-2xl px-3 md:px-4 py-2 md:py-2.5 text-xs md:text-sm focus:outline-none min-w-0" />
               <button type="submit" className="btn-brand font-extrabold px-3 md:px-5 py-2 md:py-2.5 rounded-xl md:rounded-2xl text-[11px] md:text-xs shrink-0">🚀</button>
             </form>
           </div>
@@ -1360,6 +1498,15 @@ function GroceryApp() {
 
         {activeTab === 'admin' && (
           <div className="space-y-3 md:space-y-4">
+            {/* ✅ v2.4.0: إشعار المخزون المنخفض */}
+            {visibleLowStockAlerts.length > 0 && (
+              <LowStockNotification
+                products={visibleLowStockAlerts}
+                onDismiss={() => { playSound('click'); setDismissedLowStock(prev => [...prev, ...visibleLowStockAlerts.map(p => p.id)]); }}
+                onOpenStockManager={() => { playSound('click'); document.querySelector('[data-section-title="إدارة المخزون"]')?.scrollIntoView({ behavior:'smooth', block:'start' }); }}
+              />
+            )}
+
             {debtRequests.length > 0 && (
               <div className="space-y-3 md:space-y-4">
                 <h2 className="font-black text-emerald-900 text-base md:text-lg flex items-center gap-2">
@@ -1404,6 +1551,9 @@ function GroceryApp() {
                   const sessions = onlineUsers.filter(u => u.name === name);
                   const isOnline = sessions.length > 0;
                   const isMe = name === currentChatUser;
+                  const acc = userAccounts[name];
+                  const display = acc?.displayName || name;
+                  const hasPass = !!(acc?.password && acc.password.length > 0);
                   return (
                     <div key={name} className={`flex items-center justify-between p-2 md:p-3 rounded-xl md:rounded-2xl border-2 ${isOnline?'bg-emerald-50 border-emerald-200':'bg-slate-50 border-slate-200 opacity-70'}`}>
                       <div className="flex items-center gap-2 md:gap-3">
@@ -1413,8 +1563,9 @@ function GroceryApp() {
                         </div>
                         <div>
                           <div className="font-black text-slate-800 text-xs md:text-sm flex items-center gap-1.5 flex-wrap">
-                            {name === 'الدعم' ? '👑 الدعم الفني' : name}
+                            {name === 'الدعم' ? '👑 الدعم الفني' : display}
                             {isMe && <span className="text-[8px] md:text-[9px] bg-brand text-white px-1.5 rounded">أنت</span>}
+                            {hasPass && <span className="text-[8px] md:text-[9px] bg-slate-700 text-white px-1.5 rounded">🔒</span>}
                             {sessions.length > 1 && <span className="text-[8px] md:text-[9px] bg-blue-100 text-blue-700 px-1.5 rounded">{sessions.length} أجهزة</span>}
                           </div>
                           <div className={`text-[9px] md:text-[10px] font-bold ${isOnline?'text-emerald-600':'text-slate-400'}`}>{isOnline ? '🟢 متصل الآن' : '⚪ غير متصل'}</div>
@@ -1426,8 +1577,7 @@ function GroceryApp() {
               </div>
             </AdminSection>
 
-            {/* ✅ v2.3.0: قسم إدارة المخزون */}
-            <AdminSection title="إدارة المخزون" icon="📦" badge={`${products.length} منتج · ${outOfStockCount} نفذت`} defaultOpen={lowStockProducts.length > 0}>
+            <AdminSection title="إدارة المخزون" icon="📦" badge={`${products.length} منتج · ${lowStockProducts.length} منخفض`} defaultOpen={lowStockProducts.length > 0}>
               {products.length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-4">لا منتجات</p>
               ) : (
@@ -1447,7 +1597,6 @@ function GroceryApp() {
                       </div>
                     </div>
                   )}
-
                   <div className="space-y-2 md:space-y-3">
                     {products.map(p => {
                       const stock = Number(p.stock) || 0;
@@ -1512,7 +1661,6 @@ function GroceryApp() {
                   <div className="text-[10px] md:text-xs font-black opacity-80 mt-0.5">ريال سعودي</div>
                 </div>
               </div>
-
               {ledgerArray.length === 0 ? (<p className="text-xs text-slate-400 text-center py-4">لا سجلات</p>) : (
                 <div className="space-y-2 md:space-y-3">
                   {ledgerArray.map(m => (
@@ -1621,6 +1769,7 @@ function GroceryApp() {
               </div>
             </AdminSection>
 
+            {/* ✅ v2.4.0: المنتجات (بدون تعديل المخزون) */}
             <AdminSection title="المنتجات" icon="📦" badge={`${products.length}`}>
               {products.length === 0 ? <p className="text-xs text-slate-400 text-center py-4">لا منتجات</p> : (
                 <div className="overflow-x-auto">
@@ -1629,34 +1778,23 @@ function GroceryApp() {
                       <th className="py-2">المنتج</th>
                       <th className="py-2">القسم</th>
                       <th className="py-2">السعر</th>
-                      <th className="py-2 text-center">المخزون</th>
                       <th className="py-2">إجراءات</th>
                     </tr></thead>
                     <tbody className="divide-y divide-slate-100 font-bold">
-                      {products.map(p => {
-                        const stock = Number(p.stock) || 0;
-                        return (
-                          <tr key={p.id} className={stock <= 0 ? 'bg-red-50' : stock <= 3 ? 'bg-amber-50' : ''}>
-                            <td className="py-2 flex items-center gap-2"><span className="text-base md:text-xl">{p.emoji || '🛒'}</span><div className="line-clamp-1">{p.name}</div></td>
-                            <td className="py-2 text-slate-600 line-clamp-1">{p.category}</td>
-                            <td className="py-2 text-brand font-black">{(Number(p.price)||0).toFixed(2)}</td>
-                            <td className="py-2 text-center">
-                              <div className="inline-flex items-center gap-0.5 bg-white border border-slate-200 rounded-lg p-0.5">
-                                <button onClick={()=>adjustProductStock(p.id, -1)} disabled={stock <= 0}
-                                  className={`w-6 h-6 rounded text-xs font-black ${stock <= 0 ? 'bg-slate-100 text-slate-300' : 'bg-red-100 hover:bg-red-200 text-red-700'}`}>−</button>
-                                <input type="number" value={stock} min="0" onChange={e=>setProductStock(p.id, e.target.value)}
-                                  className="w-10 text-center font-black text-[11px] bg-slate-50 border-0 focus:outline-none" />
-                                <button onClick={()=>adjustProductStock(p.id, 1)}
-                                  className="w-6 h-6 rounded text-xs font-black bg-emerald-100 hover:bg-emerald-200 text-emerald-700">+</button>
-                              </div>
-                            </td>
-                            <td className="py-2">
-                              <button onClick={()=>setProductModal({ mode:'edit', data:p, pendingImage:'' })} className="bg-brand-light px-1.5 md:px-2.5 py-1 rounded-lg text-[10px] md:text-[11px]">تعديل</button>
-                              <button onClick={()=>handleDeleteProduct(p.id,p.name)} className="bg-red-100 text-red-700 px-1.5 md:px-2.5 py-1 rounded-lg text-[10px] md:text-[11px] mr-1">حذف</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {products.map(p => (
+                        <tr key={p.id} className="hover:bg-slate-50">
+                          <td className="py-2 flex items-center gap-2">
+                            <span className="text-base md:text-xl">{p.emoji || '🛒'}</span>
+                            <div className="line-clamp-1">{p.name}</div>
+                          </td>
+                          <td className="py-2 text-slate-600 line-clamp-1">{p.category}</td>
+                          <td className="py-2 text-brand font-black">{(Number(p.price)||0).toFixed(2)} ر.س</td>
+                          <td className="py-2">
+                            <button onClick={()=>setProductModal({ mode:'edit', data:p, pendingImage:'' })} className="bg-brand-light px-1.5 md:px-2.5 py-1 rounded-lg text-[10px] md:text-[11px]">تعديل</button>
+                            <button onClick={()=>handleDeleteProduct(p.id,p.name)} className="bg-red-100 text-red-700 px-1.5 md:px-2.5 py-1 rounded-lg text-[10px] md:text-[11px] mr-1">حذف</button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1720,7 +1858,7 @@ function GroceryApp() {
             </div>
             <div className="bg-brand-light p-2.5 md:p-3 flex items-center justify-between text-[11px] md:text-xs border-b border-slate-200">
               <span className="font-bold">الطلب باسم:</span>
-              <span className="bg-brand px-2 md:px-3 py-1 rounded-lg text-white font-black">👤 {currentChatUser}</span>
+              <span className="bg-brand px-2 md:px-3 py-1 rounded-lg text-white font-black">👤 {myDisplayName}</span>
             </div>
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 md:space-y-3">
               {cart.length === 0 ? (
@@ -1778,7 +1916,7 @@ function GroceryApp() {
               <AnonymousAvatar size={48} />
               <div>
                 <div className="text-[9px] md:text-[10px] text-slate-500 font-bold">صاحب الحساب</div>
-                <div className="font-black text-slate-900 text-base md:text-lg">{currentChatUser}</div>
+                <div className="font-black text-slate-900 text-base md:text-lg">{myDisplayName}</div>
               </div>
             </div>
             <div className="bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 rounded-2xl md:rounded-3xl p-4 md:p-6 text-center text-slate-950 shadow-lg relative overflow-hidden">
@@ -1806,7 +1944,153 @@ function GroceryApp() {
         </div>
       )}
 
-      {identityModalOpen && (
+      {/* ✅ v2.4.0: نافذة إعدادات الحساب */}
+      {settingsModal && currentChatUser && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[105] flex items-center justify-center p-3 md:p-4" onClick={()=>setSettingsModal(null)}>
+          <div onClick={e=>e.stopPropagation()} className="bg-white rounded-3xl p-5 md:p-6 max-w-md w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2 md:pb-3">
+              <h3 className="font-black text-base md:text-lg flex items-center gap-2">⚙️ إعدادات حسابي</h3>
+              <button onClick={()=>setSettingsModal(null)} className="text-slate-400 hover:text-slate-700 text-xl md:text-2xl w-7 h-7 md:w-8 md:h-8 flex items-center justify-center rounded-full hover:bg-slate-100">✕</button>
+            </div>
+
+            {/* معلومات الحساب */}
+            <div className="bg-slate-50 rounded-xl md:rounded-2xl p-3 md:p-4 border border-slate-200 flex items-center gap-2 md:gap-3">
+              <AnonymousAvatar size={48} tone={currentChatUser === 'الدعم' ? 'amber' : 'slate'} />
+              <div className="flex-1 min-w-0">
+                <div className="text-[9px] md:text-[10px] text-slate-500 font-bold">الحساب الحالي</div>
+                <div className="font-black text-slate-900 text-sm md:text-base truncate">{currentChatUser === 'الدعم' ? '👑 الدعم الفني' : currentChatUser}</div>
+                {userAccounts[currentChatUser]?.password && (
+                  <div className="text-[9px] md:text-[10px] text-emerald-600 font-bold">🔒 محمي بكلمة مرور</div>
+                )}
+              </div>
+            </div>
+
+            {/* الاسم المعروض */}
+            {currentChatUser !== 'الدعم' && (
+              <div>
+                <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">✏️ الاسم المعروض:</label>
+                <input type="text" value={settingsModal.displayName}
+                  onChange={e=>setSettingsModal({ ...settingsModal, displayName: e.target.value })}
+                  placeholder="الاسم الذي يظهر للآخرين"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <p className="text-[9px] md:text-[10px] text-slate-400 mt-1">سيظهر هذا الاسم في الدردشة والمتصلين فقط.</p>
+              </div>
+            )}
+
+            {/* كلمة المرور */}
+            {currentChatUser !== 'الدعم' && (
+              <>
+                <div className="border-t border-slate-100 pt-3">
+                  <div className="font-black text-slate-800 text-xs md:text-sm mb-2 flex items-center gap-2">
+                    🔐 كلمة مرور الحساب
+                    {userAccounts[currentChatUser]?.password ? (
+                      <span className="text-[9px] md:text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">محمي</span>
+                    ) : (
+                      <span className="text-[9px] md:text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">مفتوح</span>
+                    )}
+                  </div>
+
+                  {userAccounts[currentChatUser]?.password && !settingsModal.removePassword && (
+                    <div className="mb-3">
+                      <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">كلمة المرور الحالية:</label>
+                      <input type="password" value={settingsModal.currentPassword}
+                        onChange={e=>setSettingsModal({ ...settingsModal, currentPassword: e.target.value })}
+                        placeholder="• • • •"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    </div>
+                  )}
+
+                  {!settingsModal.removePassword && (
+                    <>
+                      <div className="mb-2">
+                        <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">
+                          {userAccounts[currentChatUser]?.password ? 'كلمة المرور الجديدة:' : '✏️ تعيين كلمة مرور جديدة:'}
+                        </label>
+                        <input type="password" value={settingsModal.newPassword}
+                          onChange={e=>setSettingsModal({ ...settingsModal, newPassword: e.target.value })}
+                          placeholder="أدخل 4 أحرف أو أكثر"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">تأكيد كلمة المرور:</label>
+                        <input type="password" value={settingsModal.confirmPassword}
+                          onChange={e=>setSettingsModal({ ...settingsModal, confirmPassword: e.target.value })}
+                          placeholder="أعد كتابتها"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                      {settingsModal.newPassword && settingsModal.confirmPassword && settingsModal.newPassword !== settingsModal.confirmPassword && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] md:text-[11px] p-2 rounded-lg text-center font-bold mt-2">⚠️ كلمتا المرور غير متطابقتين</div>
+                      )}
+                      {settingsModal.newPassword && settingsModal.newPassword.length >= 4 && settingsModal.newPassword === settingsModal.confirmPassword && (
+                        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] md:text-[11px] p-2 rounded-lg text-center font-bold mt-2">✅ جاهز للحفظ</div>
+                      )}
+                    </>
+                  )}
+
+                  {settingsModal.removePassword && (
+                    <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 text-center">
+                      <div className="text-2xl">⚠️</div>
+                      <div className="font-black text-red-900 text-xs md:text-sm mt-1">سيتم حذف كلمة المرور</div>
+                      <div className="text-[10px] md:text-[11px] text-red-700 mt-0.5">سيصبح حسابك مفتوحاً للجميع</div>
+                    </div>
+                  )}
+
+                  {userAccounts[currentChatUser]?.password && (
+                    <button type="button" onClick={()=>setSettingsModal({ ...settingsModal, removePassword: !settingsModal.removePassword })}
+                      className="text-[10px] md:text-[11px] text-red-600 hover:text-red-800 font-bold mt-3 underline block mx-auto">
+                      {settingsModal.removePassword ? '↩️ تراجع عن الحذف' : '🗑️ حذف كلمة المرور'}
+                    </button>
+                  )}
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 text-blue-800 text-[10px] md:text-[11px] p-2.5 md:p-3 rounded-xl">
+                  💡 إذا لم تضع كلمة مرور، يمكن لأي شخص الدخول باسمك. ضع كلمة مرور لحماية حسابك.
+                </div>
+              </>
+            )}
+
+            {currentChatUser === 'الدعم' && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 text-[11px] md:text-xs p-3 rounded-xl text-center">
+                ⚙️ حساب الإدارة يُدار من قسم "كلمة المرور PIN" في لوحة التحكم.
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2 border-t border-slate-100">
+              <button onClick={handleSaveAccountSettings} className="btn-brand flex-1 font-extrabold py-3 rounded-xl text-xs">💾 حفظ الإعدادات</button>
+              <button onClick={handleLogout} className="bg-red-100 hover:bg-red-200 text-red-700 font-extrabold px-4 py-3 rounded-xl text-xs">🚪 خروج</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ v2.4.0: نافذة كلمة المرور عند الدخول */}
+      {passwordPrompt && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[120] flex items-center justify-center p-3 md:p-4">
+          <div className="bg-white rounded-3xl p-5 md:p-6 max-w-sm w-full text-center space-y-3 md:space-y-4 shadow-2xl">
+            <div className="mx-auto"><AnonymousAvatar size={60} tone="amber" /></div>
+            <div>
+              <h3 className="font-black text-lg md:text-xl">🔒 حساب محمي</h3>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">
+                حساب <strong className="text-slate-800">{userAccounts[passwordPrompt.userName]?.displayName || passwordPrompt.userName}</strong> يتطلب كلمة مرور للدخول
+              </p>
+            </div>
+            <form onSubmit={handleVerifyUserPassword} className="space-y-3">
+              <input type="password" value={passwordPrompt.input}
+                onChange={e=>setPasswordPrompt({ ...passwordPrompt, input: e.target.value, error: '' })}
+                autoFocus
+                placeholder="• • • •"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-center font-black text-lg tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              {passwordPrompt.error && <p className="text-xs text-red-600 bg-red-50 p-2 rounded-lg">{passwordPrompt.error}</p>}
+              <div className="flex gap-2">
+                <button type="submit" className="btn-brand flex-1 font-extrabold py-2.5 rounded-xl text-xs">🔓 دخول</button>
+                <button type="button" onClick={()=>{ playSound('click'); setPasswordPrompt(null); setCurrentChatUser(''); try{ localStorage.removeItem(LS_KEYS.DEVICE_USER); }catch{} setIdentityModalOpen(true); }} className="bg-slate-100 px-4 py-2.5 rounded-xl text-xs font-bold">رجوع</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {identityModalOpen && !passwordPrompt && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-3 md:p-4">
           <div className="bg-white rounded-3xl p-5 md:p-8 max-w-md w-full shadow-2xl space-y-4 md:space-y-5 text-center">
             <div className="mx-auto" style={{ width:60 }}><AnonymousAvatar size={60} /></div>
@@ -1815,19 +2099,27 @@ function GroceryApp() {
               <p className="text-xs md:text-sm text-slate-500 mt-1">سيتم تذكّر جهازك</p>
             </div>
             <div className="grid grid-cols-2 gap-2 md:gap-3">
-              {ALL_CHAT_USERS.map(user => (
-                <button key={user} onClick={()=>handleIdentityPick(user)}
-                  className={`p-3 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm font-black transition border-2 hover:scale-[1.02] flex flex-col items-center gap-1.5 md:gap-2 ${user==='الدعم'?'bg-amber-50 border-amber-300 text-amber-800':'bg-slate-50 border-slate-200 text-slate-800'}`}>
-                  <AnonymousAvatar size={36} tone={user==='الدعم'?'amber':'slate'} />
-                  <div>{user==='الدعم' ? 'الدعم 🔒' : user}</div>
-                </button>
-              ))}
+              {ALL_CHAT_USERS.map(user => {
+                const acc = userAccounts[user];
+                const hasPass = !!(acc?.password && acc.password.length > 0);
+                const display = acc?.displayName || user;
+                return (
+                  <button key={user} onClick={()=>handleIdentityPick(user)}
+                    className={`relative p-3 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm font-black transition border-2 hover:scale-[1.02] flex flex-col items-center gap-1.5 md:gap-2 ${user==='الدعم'?'bg-amber-50 border-amber-300 text-amber-800':'bg-slate-50 border-slate-200 text-slate-800'}`}>
+                    <AnonymousAvatar size={36} tone={user==='الدعم'?'amber':'slate'} />
+                    <div>{user==='الدعم' ? 'الدعم 🔒' : display}</div>
+                    {hasPass && user !== 'الدعم' && (
+                      <span className="absolute top-1 left-1 text-[10px] bg-slate-800 text-white px-1.5 py-0.5 rounded-full">🔒</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {showNotifPrompt && !identityModalOpen && !supportPinModalOpen && (
+      {showNotifPrompt && !identityModalOpen && !supportPinModalOpen && !passwordPrompt && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[115] flex items-center justify-center p-3 md:p-4">
           <div className="bg-white rounded-3xl p-5 md:p-8 max-w-md w-full shadow-2xl space-y-4 md:space-y-5 text-center">
             <div className="text-4xl md:text-5xl">🔔</div>
@@ -1958,7 +2250,7 @@ function GroceryApp() {
       {pinChangeModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-3 md:p-4">
           <div className="bg-white rounded-3xl p-5 md:p-6 max-w-sm w-full shadow-2xl space-y-3 md:space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2 md:pb-3"><h3 className="font-black text-base md:text-lg">🔐 تغيير كلمة المرور</h3><button onClick={()=>setPinChangeModal(null)} className="text-slate-400 font-bold">✕</button></div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2 md:pb-3"><h3 className="font-black text-base md:text-lg">🔐 تغيير كلمة مرور الإدارة</h3><button onClick={()=>setPinChangeModal(null)} className="text-slate-400 font-bold">✕</button></div>
             <div className="space-y-2.5 md:space-y-3">
               <div>
                 <label className="block text-[11px] md:text-xs font-bold mb-1 text-slate-700">كلمة المرور الحالية:</label>
@@ -2081,7 +2373,6 @@ function GroceryApp() {
                 <input type="text" name="emoji" defaultValue={productModal.data?.emoji||'🛒'} className="bg-slate-50 border rounded-xl px-3 py-2 text-xs font-bold text-center" maxLength={2} />
                 <input type="text" name="desc" defaultValue={productModal.data?.desc||''} placeholder="وصف" className="bg-slate-50 border rounded-xl px-3 py-2 text-xs font-bold col-span-2" />
               </div>
-              {/* ✅ v2.3.0: حقل المخزون */}
               <div>
                 <label className="block text-[11px] md:text-xs font-bold mb-1 text-slate-700">📦 الكمية في المخزون:</label>
                 <input type="number" step="1" min="0" name="stock" defaultValue={productModal.data?.stock ?? 10} className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-sm font-black text-center" placeholder="0" />
@@ -2112,7 +2403,7 @@ function GroceryApp() {
               ))}
             </div>
             <div className="bg-slate-50 p-2.5 md:p-3 rounded-xl text-[11px] md:text-xs space-y-1">
-              <div className="flex justify-between"><span>الطلب باسم:</span><strong className="text-brand">{currentChatUser}</strong></div>
+              <div className="flex justify-between"><span>الطلب باسم:</span><strong className="text-brand">{myDisplayName}</strong></div>
               <div className="flex justify-between"><span>طريقة الدفع:</span><strong>{pendingPaymentMethod}</strong></div>
               <div className="flex justify-between"><span>الإجمالي:</span><strong className="text-brand">{cartTotal.toFixed(2)} ر.س</strong></div>
             </div>
