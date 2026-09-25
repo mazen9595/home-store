@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>بقالة أم محمد v2.2.4</title>
+<title>بقالة أم محمد v2.3.0</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = { darkMode:'class', theme:{ extend:{ fontFamily:{ cairo:['Cairo','sans-serif'] } } } }
@@ -30,7 +30,6 @@
   @keyframes slideIn { from { transform: translateX(-100%); opacity:0;} to { transform: translateX(0); opacity:1;} }
   @keyframes glow { 0%,100% { box-shadow: 0 0 10px rgba(245,158,11,0.4); } 50% { box-shadow: 0 0 20px rgba(245,158,11,0.7); } }
   .debt-glow { animation: glow 2.5s ease-in-out infinite; }
-  /* ✅ إخفاء شريط التمرير الأفقي للقوائم على الجوال */
   .nav-scroll::-webkit-scrollbar { display:none; }
   .nav-scroll { -ms-overflow-style:none; scrollbar-width:none; }
 </style>
@@ -50,7 +49,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo } = React;
 
-const APP_VERSION = '2.2.4';
+const APP_VERSION = '2.3.0';
 const MOHAMMED_PHONE = '966505835077';
 
 const LS_KEYS = {
@@ -436,6 +435,10 @@ function GroceryApp() {
 
   const visibleBroadcasts = useMemo(() => broadcasts.filter(b => !dismissedBroadcasts.includes(b.id)), [broadcasts, dismissedBroadcasts]);
 
+  /* ✅ v2.3.0: إحصائيات المخزون */
+  const lowStockProducts = useMemo(() => products.filter(p => (Number(p.stock)||0) <= 3), [products]);
+  const outOfStockCount = useMemo(() => products.filter(p => (Number(p.stock)||0) <= 0).length, [products]);
+
   useEffect(() => {
     if (activeTab === 'chat' && chatMessages.length > 0) {
       const maxTs = Math.max(...chatMessages.map(m => (m.timestamp?.seconds||0)*1000));
@@ -568,7 +571,14 @@ function GroceryApp() {
           const th = allDocs.find(d => d._id==='siteTheme'); if (th && th.themeId) setSiteThemeId(th.themeId);
           const c = allDocs.find(d => d._id==='categories'); if (c && Array.isArray(c.list)) setCategories(c.list.map(x => ({ id:x.id||x.name, name:x.name })));
           const dbt = allDocs.find(d => d._id==='debts'); if (dbt) { const clean = {}; Object.entries(dbt).forEach(([k,v]) => { if (typeof v==='number') clean[k]=v; }); setDebtsMap(clean); }
-          const pr = allDocs.find(d => d._id==='products' || d._id==='productList'); if (pr) { const list = pr.list || pr.products || (Array.isArray(pr)?pr:null); if (Array.isArray(list)) setProducts(list); }
+          const pr = allDocs.find(d => d._id==='products' || d._id==='productList');
+          if (pr) {
+            const list = pr.list || pr.products || (Array.isArray(pr)?pr:null);
+            if (Array.isArray(list)) {
+              /* ✅ تأكد أن كل منتج عنده stock */
+              setProducts(list.map(p => ({ ...p, stock: typeof p.stock === 'number' ? p.stock : 0 })));
+            }
+          }
           const imgs = {}; allDocs.filter(d => d._id.startsWith('productImage_') && d.dataUrl).forEach(d => { const pid = d.productId != null ? String(d.productId) : d._id.replace('productImage_',''); imgs[pid] = d.dataUrl; });
           setImageMap(imgs);
           const sc = allDocs.find(d => d._id==='soundsConfig'); if (sc && sc.config) setSoundsConfig({ ...DEFAULT_SOUNDS, ...sc.config });
@@ -679,6 +689,52 @@ function GroceryApp() {
     await deleteDoc(doc(dbInstance, COL.CHAT, docId));
   };
 
+  /* ✅ v2.3.0: إدارة المخزون */
+  const setProductStock = async (productId, newStock) => {
+    const num = Math.max(0, parseInt(newStock) || 0);
+    const newList = products.map(p => String(p.id) === String(productId) ? { ...p, stock: num } : p);
+    try { await updateStoreDataDoc('products', { list: newList }); }
+    catch (err) { console.error('setStock:', err); }
+  };
+
+  const adjustProductStock = async (productId, delta) => {
+    const prod = products.find(p => String(p.id) === String(productId));
+    if (!prod) return;
+    const current = Number(prod.stock) || 0;
+    const newStock = Math.max(0, current + delta);
+    await setProductStock(productId, newStock);
+  };
+
+  /* ✅ خصم من المخزون عند تأكيد طلب */
+  const subtractStockForOrder = async (orderItems) => {
+    if (!orderItems || !orderItems.length) return;
+    const newList = products.map(prod => {
+      const ordered = orderItems.find(it => String(it.id) === String(prod.id));
+      if (ordered) {
+        const currentStock = Number(prod.stock) || 0;
+        return { ...prod, stock: Math.max(0, currentStock - ordered.qty) };
+      }
+      return prod;
+    });
+    try { await updateStoreDataDoc('products', { list: newList }); }
+    catch (err) { console.error('subtractStock:', err); }
+  };
+
+  /* ✅ إرجاع للمخزون عند الإلغاء أو الحذف */
+  const restoreStockForOrder = async (orderItems) => {
+    if (!orderItems || !orderItems.length) return;
+    const newList = products.map(prod => {
+      const ordered = orderItems.find(it => String(it.id) === String(prod.id));
+      if (ordered) {
+        const currentStock = Number(prod.stock) || 0;
+        return { ...prod, stock: currentStock + ordered.qty };
+      }
+      return prod;
+    });
+    try { await updateStoreDataDoc('products', { list: newList }); }
+    catch (err) { console.error('restoreStock:', err); }
+  };
+
   const handleUserChange = (newUser) => {
     playSound('click');
     const wasAdmin = currentChatUser === 'الدعم';
@@ -712,7 +768,7 @@ function GroceryApp() {
   };
   const handleCancelSupportPin = () => {
     playSound('click'); setSupportPinModalOpen(false); setPinInput(''); setPinError('');
-    if (currentChatUser && currentChatUser !== 'الدعم') { /* keep */ } else { setIdentityModalOpen(true); }
+    if (currentChatUser && currentChatUser !== 'الدعم') { } else { setIdentityModalOpen(true); }
   };
   const handleLogout = () => {
     if (!confirm('هل أنت متأكد من تسجيل الخروج؟')) return;
@@ -808,7 +864,12 @@ function GroceryApp() {
     const fd = new FormData(e.target);
     const existingId = productModal.data?.id; let newId = existingId;
     if (!newId) { const nums = products.map(p => Number(p.id)||0); newId = (nums.length ? Math.max(...nums) : 0) + 1; }
-    const newProduct = { id:newId, name:fd.get('name').trim(), price:parseFloat(fd.get('price')) || 0, desc:fd.get('desc')?.trim() || '', emoji:fd.get('emoji') || '🛒', category:fd.get('category') || '', imageUrl:'' };
+    const newProduct = {
+      id:newId, name:fd.get('name').trim(), price:parseFloat(fd.get('price')) || 0,
+      desc:fd.get('desc')?.trim() || '', emoji:fd.get('emoji') || '🛒',
+      category:fd.get('category') || '', imageUrl:'',
+      stock: Math.max(0, parseInt(fd.get('stock')) || 0),
+    };
     const newList = existingId ? products.map(p => String(p.id) === String(existingId) ? { ...p, ...newProduct } : p) : [...products, newProduct];
     try {
       await updateStoreDataDoc('products', { list:newList });
@@ -823,11 +884,19 @@ function GroceryApp() {
     try { await updateStoreDataDoc('products', { list:newList }); setNotificationModal({ title:'✅ حُذف', message:name }); }
     catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
+  /* ✅ عند حذف طلب غير ملغي → إرجاع المخزون */
   const handleDeleteOrder = async (docId, buyer) => {
     playSound('click');
     if (!confirm(`حذف طلب (${buyer})؟`)) return;
-    try { await deleteOrderDoc(docId); setNotificationModal({ title:'✅ حُذف', message:`حُذف طلب (${buyer}).` }); }
-    catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+    const ord = orders.find(o => o._id === docId);
+    const wasCancelled = (ord?.status || '').includes('ملغي');
+    try {
+      if (!wasCancelled && ord?.items?.length) {
+        await restoreStockForOrder(ord.items);
+      }
+      await deleteOrderDoc(docId);
+      setNotificationModal({ title:'✅ حُذف', message:`حُذف طلب (${buyer})${!wasCancelled ? ' وأُرجع المخزون' : ''}.` });
+    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
   const handleDebtAdjust = async () => {
     if (!debtModal) return;
@@ -870,21 +939,54 @@ function GroceryApp() {
     catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
   const handleDeleteChatMessage = async (docId) => { playSound('click'); try { await deleteChatDoc(docId); } catch(e){} };
+
+  /* ✅ v2.3.0: إضافة للسلة مع فحص المخزون */
   const addToCart = (product) => {
+    const stock = Number(product.stock) || 0;
+    if (stock <= 0) {
+      setNotificationModal({ title:'❌ نفذت الكمية', message:`(${product.name}) غير متوفر حالياً.` });
+      return;
+    }
     playSound('click');
     setCart(prev => {
       const ex = prev.find(i => String(i.id)===String(product.id));
-      if (ex) return prev.map(i => String(i.id)===String(product.id) ? { ...i, qty:i.qty+1 } : i);
+      if (ex) {
+        if (ex.qty >= stock) {
+          setNotificationModal({ title:'⚠️ الكمية غير كافية', message:`المتوفر فقط ${stock} من (${product.name}).` });
+          return prev;
+        }
+        return prev.map(i => String(i.id)===String(product.id) ? { ...i, qty:i.qty+1 } : i);
+      }
       return [...prev, { ...product, qty:1 }];
     });
   };
-  const updateCartQty = (id, delta) => { playSound('click'); setCart(prev => prev.map(i => String(i.id)===String(id) ? (i.qty+delta>0?{...i,qty:i.qty+delta}:null) : i).filter(Boolean)); };
+
+  /* ✅ فحص المخزون عند الزيادة في السلة */
+  const updateCartQty = (id, delta) => {
+    playSound('click');
+    setCart(prev => {
+      const item = prev.find(i => String(i.id)===String(id));
+      if (!item) return prev;
+      if (delta > 0) {
+        const prod = products.find(p => String(p.id) === String(id));
+        const stock = prod ? (Number(prod.stock) || 0) : 0;
+        if (item.qty + delta > stock) {
+          setNotificationModal({ title:'⚠️ الكمية غير كافية', message:`المتوفر فقط ${stock} من (${item.name}).` });
+          return prev;
+        }
+      }
+      return prev.map(i => String(i.id)===String(id) ? (i.qty+delta>0?{...i,qty:i.qty+delta}:null) : i).filter(Boolean);
+    });
+  };
+
   const startCheckout = (paymentKey) => {
     if (!cart.length) return;
     if (!storeStatus.isOpen) { setNotificationModal({ title:'🚫 مغلق', message:'المتجر مغلق.' }); return; }
     playSound('click');
     setCartDrawerOpen(false); setPendingPaymentMethod(paymentKey); setSelectedLocation(''); setLocationModalOpen(true);
   };
+
+  /* ✅ v2.3.0: خصم المخزون عند تأكيد الطلب */
   const confirmOrderWithLocation = async () => {
     if (isSubmitting) return;
     if (!selectedLocation) { setNotificationModal({ title:'⚠️', message:'اختر موقعك.' }); return; }
@@ -901,6 +1003,8 @@ function GroceryApp() {
     const orderData = { buyer:buyerForOrder, items, totalAmount:totalForOrder, status:ORDER_STATUSES[0].key, location:locationForOrder, paymentMethod:paymentForOrder, orderTime:timeNow };
     try {
       const orderId = await addOrderDoc(orderData);
+      /* ✅ خصم من المخزون */
+      await subtractStockForOrder(items);
       if (isDebt) {
         const newDebts = { ...debtsMap };
         newDebts[buyerForOrder] = (newDebts[buyerForOrder]||0) + totalForOrder;
@@ -911,6 +1015,7 @@ function GroceryApp() {
     } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
     finally { setIsSubmitting(false); }
   };
+
   const submitRating = async () => {
     if (!ratingModal) return;
     playSound('cash');
@@ -918,7 +1023,22 @@ function GroceryApp() {
     closeRatingAndNavigate();
   };
   const closeRatingAndNavigate = () => { setRatingModal(null); setActiveTab('orders'); };
-  const handleUpdateOrderStatus = async (docId, newStatus) => { playSound('cash'); try { await updateOrderDoc(docId, { status:newStatus }); } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); } };
+
+  /* ✅ v2.3.0: إرجاع المخزون عند إلغاء الطلب */
+  const handleUpdateOrderStatus = async (docId, newStatus) => {
+    playSound('cash');
+    const ord = orders.find(o => o._id === docId);
+    const wasCancelled = (ord?.status || '').includes('ملغي');
+    const willBeCancelled = (newStatus || '').includes('ملغي');
+    try {
+      await updateOrderDoc(docId, { status:newStatus });
+      /* إذا تغيرت الحالة من غير ملغي إلى ملغي → أعد المخزون */
+      if (!wasCancelled && willBeCancelled && ord?.items?.length) {
+        await restoreStockForOrder(ord.items);
+      }
+    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+  };
+
   const dismissNotification = (orderId) => { playSound('click'); setDismissedNotifs(prev => prev.includes(orderId) ? prev : [...prev, orderId]); };
   const completeOrderFromNotif = async (orderId) => { playSound('cash'); await handleUpdateOrderStatus(orderId, 'أتممت الطلب ✅'); };
 
@@ -950,12 +1070,9 @@ function GroceryApp() {
         .floating-cart { background-color: ${siteTheme.primary} !important; }
       `}</style>
 
-      {/* ✅ v2.2.4: هيدر متوافق مع الجوال — القوائم تنزل تحت الاسم */}
       <header className="header-gradient text-white shadow-lg sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-3 md:px-4 py-2 md:py-3">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-3">
-
-            {/* الصف الأول: الشعار + الاسم + المستخدم */}
             <div className="flex items-center justify-between gap-2 md:gap-3 md:flex-initial md:min-w-0">
               <div className="flex items-center gap-2 md:gap-3 min-w-0 flex-1 md:flex-initial">
                 <div className="bg-white p-1.5 md:p-2 rounded-xl md:rounded-2xl font-black text-xl md:text-2xl flex items-center justify-center w-10 h-10 md:w-12 md:h-12 overflow-hidden logo-icon shrink-0">
@@ -976,11 +1093,15 @@ function GroceryApp() {
                       <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-emerald-300 rounded-full animate-pulse"></span>
                       {onlineUsers.length} متصل
                     </div>
+                    {isAdmin && outOfStockCount > 0 && (
+                      <div className="flex items-center gap-1 bg-red-500/40 text-red-50 border border-red-300/50 px-1.5 md:px-2.5 py-0.5 rounded-full text-[8px] md:text-[10px] font-black whitespace-nowrap">
+                        ⚠️ {outOfStockCount} نفذت
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* اختيار المستخدم + الدين (نسخة الجوال فقط) */}
               <div className="flex md:hidden items-center gap-1 shrink-0">
                 <div className="bg-black/20 backdrop-blur-sm border border-white/20 px-1.5 py-1 rounded-xl flex items-center gap-1">
                   <select value={currentChatUser} onChange={e=>handleUserChange(e.target.value)}
@@ -1002,7 +1123,6 @@ function GroceryApp() {
               </div>
             </div>
 
-            {/* اختيار المستخدم + الدين (نسخة الكمبيوتر فقط) */}
             <div className="hidden md:flex items-center gap-2 md:flex-initial shrink-0">
               <div className="bg-black/20 backdrop-blur-sm border border-white/20 px-3.5 py-1.5 rounded-2xl flex items-center gap-2">
                 <span className="text-xs font-black text-amber-300">👤 أنت:</span>
@@ -1023,7 +1143,6 @@ function GroceryApp() {
               )}
             </div>
 
-            {/* التنقل: تحت على الجوال / بجانب على الكمبيوتر */}
             <nav className="nav-scroll flex items-center gap-1 bg-black/20 p-1 rounded-xl md:rounded-2xl overflow-x-auto md:overflow-visible w-full md:w-auto md:flex-initial shrink-0">
               {[['products','🏪 المنتجات'],['chat','💬 الدردشة'],['orders','📦 الطلبات'],['admin','⚙️ الإدارة']].map(([k,label]) => (
                 <button key={k} onClick={()=>{ playSound('click'); if(k==='admin' && !isAdminAuthenticated){ setPinInput(''); setPinError(''); setAdminPinModalOpen(true); } else setActiveTab(k); }}
@@ -1042,7 +1161,6 @@ function GroceryApp() {
                 </button>
               ))}
             </nav>
-
           </div>
         </div>
       </header>
@@ -1103,18 +1221,31 @@ function GroceryApp() {
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4">
                 {filteredProducts.map(p => {
                   const imgSrc = imageMap[String(p.id)] || p.imageUrl || '';
+                  const stock = Number(p.stock) || 0;
+                  const stockBadge = stock <= 0
+                    ? { bg:'bg-red-500 text-white border-red-600', text:'❌ نفذت' }
+                    : stock <= 3
+                      ? { bg:'bg-amber-500 text-white border-amber-600', text:`⚠️ ${stock}` }
+                      : { bg:'bg-emerald-500 text-white border-emerald-600', text:`📦 ${stock}` };
                   return (
-                    <div key={p.id} className="bg-white rounded-2xl p-2.5 md:p-4 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col">
+                    <div key={p.id} className="bg-white rounded-2xl p-2.5 md:p-4 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col relative">
                       <div className="relative w-full h-32 md:h-48 bg-white rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-3 border border-slate-100 flex items-center justify-center">
                         {imgSrc ? (<img src={imgSrc} alt={p.name} className="w-full h-full object-contain p-1 md:p-2" onError={e=>{ e.target.style.display='none'; if (e.target.nextElementSibling) e.target.nextElementSibling.style.display='flex'; }} />) : null}
                         <div className="w-full h-full flex items-center justify-center text-3xl md:text-5xl bg-slate-50" style={{ display:imgSrc?'none':'flex' }}>{p.emoji || '🛒'}</div>
+                        {/* ✅ v2.3.0: شارة المخزون */}
+                        <div className={`absolute top-1.5 right-1.5 md:top-2 md:right-2 px-2 py-0.5 rounded-full text-[9px] md:text-[11px] font-black border-2 shadow-md ${stockBadge.bg}`}>
+                          {stockBadge.text}
+                        </div>
                       </div>
                       <span className="text-[9px] md:text-[10px] font-extrabold bg-slate-100 text-slate-600 px-1.5 md:px-2 py-0.5 rounded-md self-start">{p.category || 'عام'}</span>
                       <h3 className="font-bold text-slate-800 text-[11px] md:text-sm mt-1 md:mt-1.5 line-clamp-2">{p.name}</h3>
                       {p.desc && <p className="text-[10px] md:text-[11px] text-slate-500 mt-0.5 line-clamp-1">{p.desc}</p>}
-                      <div className="mt-2 md:mt-4 pt-2 md:pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <div className="mt-2 md:mt-4 pt-2 md:pt-3 border-t border-slate-100 flex items-center justify-between gap-1">
                         <span className="text-xs md:text-base font-black text-brand">{(Number(p.price)||0).toFixed(2)} <span className="text-[9px] md:text-xs">ر.س</span></span>
-                        <button onClick={()=>addToCart(p)} disabled={!storeStatus.isOpen} className="btn-brand font-bold px-2 md:px-3 py-1.5 md:py-2 rounded-lg md:rounded-xl text-[10px] md:text-xs">➕<span className="hidden md:inline"> إضافة</span></button>
+                        <button onClick={()=>addToCart(p)} disabled={!storeStatus.isOpen || stock <= 0}
+                          className={`font-bold px-2 md:px-3 py-1.5 md:py-2 rounded-lg md:rounded-xl text-[10px] md:text-xs ${(!storeStatus.isOpen || stock <= 0) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'btn-brand'}`}>
+                          {stock <= 0 ? '❌' : '➕'}<span className="hidden md:inline">{stock <= 0 ? ' نفذت' : ' إضافة'}</span>
+                        </button>
                       </div>
                     </div>
                   );
@@ -1201,6 +1332,7 @@ function GroceryApp() {
                   {isCancelled ? (
                     <div className="border-2 border-red-300 bg-red-50 text-red-700 rounded-xl md:rounded-2xl p-3 md:p-4 text-center">
                       <span className="text-xl md:text-2xl">❌</span><p className="font-black text-xs md:text-sm mt-1">تم إلغاء الطلب</p>
+                      <p className="text-[10px] md:text-[11px] mt-0.5 opacity-80">✓ أُرجع المخزون تلقائياً</p>
                     </div>
                   ) : (
                     <div>
@@ -1254,11 +1386,11 @@ function GroceryApp() {
             <div className="bg-slate-900 text-white p-4 md:p-6 rounded-2xl md:rounded-3xl flex flex-wrap items-center justify-between gap-3 md:gap-4">
               <div>
                 <h2 className="text-lg md:text-xl font-black">⚙️ لوحة التحكم</h2>
-                <p className="text-[11px] md:text-xs text-slate-400 mt-1">👥 {onlineUsers.length} متصل · v{APP_VERSION}</p>
+                <p className="text-[11px] md:text-xs text-slate-400 mt-1">👥 {onlineUsers.length} متصل · 📦 {products.length} منتج · v{APP_VERSION}</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={()=>setBroadcastModal({ title:'', message:'' })} className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-3 md:px-4 py-2 md:py-2.5 rounded-xl md:rounded-2xl text-[11px] md:text-xs">📢 إعلان</button>
-                <button onClick={()=>setProductModal({ mode:'add', data:{ name:'', price:0, desc:'', emoji:'🛒', category:allCategories[0]?.id || '' }, pendingImage:'' })} className="btn-brand font-black px-3 md:px-4 py-2 md:py-2.5 rounded-xl md:rounded-2xl text-[11px] md:text-xs">➕ منتج</button>
+                <button onClick={()=>setProductModal({ mode:'add', data:{ name:'', price:0, desc:'', emoji:'🛒', category:allCategories[0]?.id || '', stock:10 }, pendingImage:'' })} className="btn-brand font-black px-3 md:px-4 py-2 md:py-2.5 rounded-xl md:rounded-2xl text-[11px] md:text-xs">➕ منتج</button>
               </div>
             </div>
 
@@ -1292,6 +1424,59 @@ function GroceryApp() {
                   );
                 })}
               </div>
+            </AdminSection>
+
+            {/* ✅ v2.3.0: قسم إدارة المخزون */}
+            <AdminSection title="إدارة المخزون" icon="📦" badge={`${products.length} منتج · ${outOfStockCount} نفذت`} defaultOpen={lowStockProducts.length > 0}>
+              {products.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-4">لا منتجات</p>
+              ) : (
+                <>
+                  {lowStockProducts.length > 0 && (
+                    <div className="bg-amber-50 border-2 border-amber-300 rounded-xl md:rounded-2xl p-3 md:p-4 space-y-2">
+                      <div className="font-black text-amber-900 text-xs md:text-sm flex items-center gap-2"><span className="text-lg">⚠️</span>تنبيه مخزون منخفض ({lowStockProducts.length})</div>
+                      <div className="flex flex-wrap gap-1.5 md:gap-2">
+                        {lowStockProducts.map(p => {
+                          const stock = Number(p.stock) || 0;
+                          return (
+                            <span key={p.id} className={`text-[10px] md:text-xs font-bold px-2 py-1 rounded-lg ${stock <= 0 ? 'bg-red-100 text-red-800 border border-red-300' : 'bg-amber-100 text-amber-800 border border-amber-300'}`}>
+                              {p.emoji || '🛒'} {p.name}: {stock <= 0 ? 'نفذت' : stock}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 md:space-y-3">
+                    {products.map(p => {
+                      const stock = Number(p.stock) || 0;
+                      return (
+                        <div key={p.id} className={`p-3 md:p-4 rounded-xl md:rounded-2xl border-2 ${stock <= 0 ? 'bg-red-50 border-red-200' : stock <= 3 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                          <div className="flex items-center justify-between gap-2 md:gap-3">
+                            <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+                              <span className="text-2xl md:text-3xl">{p.emoji || '🛒'}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-black text-slate-800 text-xs md:text-sm truncate">{p.name}</div>
+                                <div className="text-[9px] md:text-[10px] text-slate-500">{p.category || 'عام'} · {(Number(p.price)||0).toFixed(2)} ر.س</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 md:gap-1.5 shrink-0 bg-white border-2 border-slate-200 rounded-xl p-1">
+                              <button onClick={()=>adjustProductStock(p.id, -1)} disabled={stock <= 0}
+                                className={`w-7 h-7 md:w-8 md:h-8 rounded-lg text-sm md:text-base font-black flex items-center justify-center transition ${stock <= 0 ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-red-100 hover:bg-red-200 text-red-700 active:scale-95'}`}>−</button>
+                              <input type="number" value={stock} min="0"
+                                onChange={e=>setProductStock(p.id, e.target.value)}
+                                className="w-12 md:w-14 text-center font-black text-sm md:text-base bg-slate-50 border border-slate-200 rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                              <button onClick={()=>adjustProductStock(p.id, 1)}
+                                className="w-7 h-7 md:w-8 md:h-8 rounded-lg text-sm md:text-base font-black flex items-center justify-center bg-emerald-100 hover:bg-emerald-200 text-emerald-700 active:scale-95 transition">+</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </AdminSection>
 
             <AdminSection title="كلمة المرور PIN" icon="🔐" badge="محمي">
@@ -1432,7 +1617,7 @@ function GroceryApp() {
                   <div className="bg-white p-1.5 md:p-2 rounded border">storeOrders: <b>{rawStats.orders}</b></div>
                   <div className="bg-white p-1.5 md:p-2 rounded border">متصلون: <b>{onlineUsers.length}</b></div>
                 </div>
-                <div className="text-[10px] md:text-[11px] text-slate-500 mt-2">📌 v{APP_VERSION} · 🔔 {newOrderNotifications.length} · 💵 {debtRequests.length} · 💰 {totalFamilyDebt.toFixed(2)}</div>
+                <div className="text-[10px] md:text-[11px] text-slate-500 mt-2">📌 v{APP_VERSION} · 🔔 {newOrderNotifications.length} · 💵 {debtRequests.length} · 📦 {products.length} · 💰 {totalFamilyDebt.toFixed(2)}</div>
               </div>
             </AdminSection>
 
@@ -1441,20 +1626,37 @@ function GroceryApp() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-right text-[10px] md:text-xs">
                     <thead><tr className="border-b border-slate-200 text-slate-400 font-extrabold">
-                      <th className="py-2">المنتج</th><th className="py-2">القسم</th><th className="py-2">السعر</th><th className="py-2">إجراءات</th>
+                      <th className="py-2">المنتج</th>
+                      <th className="py-2">القسم</th>
+                      <th className="py-2">السعر</th>
+                      <th className="py-2 text-center">المخزون</th>
+                      <th className="py-2">إجراءات</th>
                     </tr></thead>
                     <tbody className="divide-y divide-slate-100 font-bold">
-                      {products.map(p => (
-                        <tr key={p.id}>
-                          <td className="py-2 flex items-center gap-2"><span className="text-base md:text-xl">{p.emoji || '🛒'}</span><div className="line-clamp-1">{p.name}</div></td>
-                          <td className="py-2 text-slate-600 line-clamp-1">{p.category}</td>
-                          <td className="py-2 text-brand font-black">{(Number(p.price)||0).toFixed(2)}</td>
-                          <td className="py-2">
-                            <button onClick={()=>setProductModal({ mode:'edit', data:p, pendingImage:'' })} className="bg-brand-light px-1.5 md:px-2.5 py-1 rounded-lg text-[10px] md:text-[11px]">تعديل</button>
-                            <button onClick={()=>handleDeleteProduct(p.id,p.name)} className="bg-red-100 text-red-700 px-1.5 md:px-2.5 py-1 rounded-lg text-[10px] md:text-[11px] mr-1">حذف</button>
-                          </td>
-                        </tr>
-                      ))}
+                      {products.map(p => {
+                        const stock = Number(p.stock) || 0;
+                        return (
+                          <tr key={p.id} className={stock <= 0 ? 'bg-red-50' : stock <= 3 ? 'bg-amber-50' : ''}>
+                            <td className="py-2 flex items-center gap-2"><span className="text-base md:text-xl">{p.emoji || '🛒'}</span><div className="line-clamp-1">{p.name}</div></td>
+                            <td className="py-2 text-slate-600 line-clamp-1">{p.category}</td>
+                            <td className="py-2 text-brand font-black">{(Number(p.price)||0).toFixed(2)}</td>
+                            <td className="py-2 text-center">
+                              <div className="inline-flex items-center gap-0.5 bg-white border border-slate-200 rounded-lg p-0.5">
+                                <button onClick={()=>adjustProductStock(p.id, -1)} disabled={stock <= 0}
+                                  className={`w-6 h-6 rounded text-xs font-black ${stock <= 0 ? 'bg-slate-100 text-slate-300' : 'bg-red-100 hover:bg-red-200 text-red-700'}`}>−</button>
+                                <input type="number" value={stock} min="0" onChange={e=>setProductStock(p.id, e.target.value)}
+                                  className="w-10 text-center font-black text-[11px] bg-slate-50 border-0 focus:outline-none" />
+                                <button onClick={()=>adjustProductStock(p.id, 1)}
+                                  className="w-6 h-6 rounded text-xs font-black bg-emerald-100 hover:bg-emerald-200 text-emerald-700">+</button>
+                              </div>
+                            </td>
+                            <td className="py-2">
+                              <button onClick={()=>setProductModal({ mode:'edit', data:p, pendingImage:'' })} className="bg-brand-light px-1.5 md:px-2.5 py-1 rounded-lg text-[10px] md:text-[11px]">تعديل</button>
+                              <button onClick={()=>handleDeleteProduct(p.id,p.name)} className="bg-red-100 text-red-700 px-1.5 md:px-2.5 py-1 rounded-lg text-[10px] md:text-[11px] mr-1">حذف</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1523,22 +1725,28 @@ function GroceryApp() {
             <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2 md:space-y-3">
               {cart.length === 0 ? (
                 <div className="text-center py-12 md:py-16 text-slate-400"><div className="text-5xl md:text-6xl opacity-40 mb-3">🛒</div><p className="text-sm font-bold">السلة فارغة</p></div>
-              ) : cart.map(item => (
-                <div key={item.id} className="flex items-center justify-between bg-slate-50 p-2.5 md:p-3 rounded-xl md:rounded-2xl border border-slate-100 gap-2">
-                  <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-                    <span className="text-2xl md:text-3xl">{item.emoji || '🛒'}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-xs md:text-sm text-slate-800 truncate">{item.name}</div>
-                      <span className="text-[11px] md:text-xs text-brand font-black">{(item.price*item.qty).toFixed(2)} ر.س</span>
+              ) : cart.map(item => {
+                const prod = products.find(p => String(p.id) === String(item.id));
+                const stock = prod ? (Number(prod.stock) || 0) : 0;
+                const isOverStock = item.qty > stock;
+                return (
+                  <div key={item.id} className={`flex items-center justify-between p-2.5 md:p-3 rounded-xl md:rounded-2xl border gap-2 ${isOverStock ? 'bg-red-50 border-red-300' : 'bg-slate-50 border-slate-100'}`}>
+                    <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+                      <span className="text-2xl md:text-3xl">{item.emoji || '🛒'}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-xs md:text-sm text-slate-800 truncate">{item.name}</div>
+                        <span className="text-[11px] md:text-xs text-brand font-black">{(item.price*item.qty).toFixed(2)} ر.س</span>
+                        {isOverStock && <div className="text-[9px] md:text-[10px] text-red-600 font-bold">⚠️ المتوفر {stock} فقط</div>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 md:gap-1.5 bg-white border border-slate-200 rounded-lg p-0.5 md:p-1 shrink-0">
+                      <button onClick={()=>updateCartQty(item.id,-1)} className="w-6 h-6 md:w-7 md:h-7 bg-slate-100 rounded text-xs md:text-sm font-black">-</button>
+                      <span className="w-5 md:w-6 text-center text-xs md:text-sm font-black">{item.qty}</span>
+                      <button onClick={()=>updateCartQty(item.id,1)} disabled={item.qty >= stock} className={`w-6 h-6 md:w-7 md:h-7 rounded text-xs md:text-sm font-black ${item.qty >= stock ? 'bg-slate-100 text-slate-300' : 'bg-slate-100'}`}>+</button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 md:gap-1.5 bg-white border border-slate-200 rounded-lg p-0.5 md:p-1 shrink-0">
-                    <button onClick={()=>updateCartQty(item.id,-1)} className="w-6 h-6 md:w-7 md:h-7 bg-slate-100 rounded text-xs md:text-sm font-black">-</button>
-                    <span className="w-5 md:w-6 text-center text-xs md:text-sm font-black">{item.qty}</span>
-                    <button onClick={()=>updateCartQty(item.id,1)} className="w-6 h-6 md:w-7 md:h-7 bg-slate-100 rounded text-xs md:text-sm font-black">+</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             {cart.length > 0 && (
               <div className="p-3 md:p-4 border-t border-slate-200 space-y-2 md:space-y-3 bg-white">
@@ -1869,9 +2077,14 @@ function GroceryApp() {
                 </select>
                 <input type="number" step="0.5" name="price" defaultValue={productModal.data?.price||0} required placeholder="السعر" className="bg-slate-50 border rounded-xl px-3 py-2 text-xs font-bold" />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <input type="text" name="emoji" defaultValue={productModal.data?.emoji||'🛒'} className="bg-slate-50 border rounded-xl px-3 py-2 text-xs font-bold text-center" maxLength={2} />
-                <input type="text" name="desc" defaultValue={productModal.data?.desc||''} placeholder="وصف" className="bg-slate-50 border rounded-xl px-3 py-2 text-xs font-bold" />
+                <input type="text" name="desc" defaultValue={productModal.data?.desc||''} placeholder="وصف" className="bg-slate-50 border rounded-xl px-3 py-2 text-xs font-bold col-span-2" />
+              </div>
+              {/* ✅ v2.3.0: حقل المخزون */}
+              <div>
+                <label className="block text-[11px] md:text-xs font-bold mb-1 text-slate-700">📦 الكمية في المخزون:</label>
+                <input type="number" step="1" min="0" name="stock" defaultValue={productModal.data?.stock ?? 10} className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-sm font-black text-center" placeholder="0" />
               </div>
               <ImageUploader value={productModal.pendingImage || (productModal.data?.id ? imageMap[String(productModal.data.id)] : '') || ''} onChange={(val)=>setProductModal({ ...productModal, pendingImage:val })} label="اختر صورة المنتج" maxDimension={800} maxOutputKB={500} />
               <div className="flex gap-2 pt-2 border-t border-slate-100">
