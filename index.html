@@ -1333,13 +1333,13 @@ function GroceryApp() {
                 {banner.message && <p className="text-[11px] md:text-xs mt-1 leading-relaxed opacity-95">{banner.message}</p>}
               </div>
             )}
-
-            <div className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row flex-wrap gap-2 md:gap-3 md:items-center">
-              <div className="relative flex-1 min-w-0 md:min-w-[180px]">
+            
+            <div className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-2 md:gap-3 md:items-center min-w-0 overflow-hidden">
+              <div className="relative w-full md:w-56 lg:w-64 md:flex-shrink-0">
                 <input type="text" placeholder="ابحث..." value={productSearch} onChange={e=>setProductSearch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 md:pr-10 md:pl-4 py-2 text-sm focus:outline-none" />
                 <span className="absolute right-3 top-2.5 text-slate-400 text-sm">🔍</span>
               </div>
-              <div className="nav-scroll flex items-center gap-1.5 overflow-x-auto pb-1">
+              <div className="nav-scroll w-full md:flex-1 min-w-0 max-w-full flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
                 <button onClick={()=>setSelectedCategory('الكل')} className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${selectedCategory==='الكل'?'btn-brand':'bg-slate-100 text-slate-600'}`}>الكل</button>
                 {allCategories.map(c => (<button key={c.id} onClick={()=>setSelectedCategory(c.id)} className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap ${selectedCategory===c.id?'btn-brand':'bg-slate-100 text-slate-600'}`}>{c.name}</button>))}
               </div>
