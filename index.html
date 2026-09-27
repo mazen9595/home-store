@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>بقالة أم محمد v2.4.1</title>
+<title>بقالة أم محمد v2.5.0</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = { darkMode:'class', theme:{ extend:{ fontFamily:{ cairo:['Cairo','sans-serif'] } } } }
@@ -36,6 +36,18 @@
   .nav-scroll { -ms-overflow-style:none; scrollbar-width:none; }
   @keyframes pulse-bell { 0%,100% { transform: scale(1);} 50% { transform: scale(1.15);} }
   .bell-pulse { animation: pulse-bell 1.5s infinite; }
+  @keyframes pop-in { 0% { transform: scale(0.9); opacity:0;} 100% { transform: scale(1); opacity:1;} }
+  .pop-in { animation: pop-in 0.3s ease-out; }
+  @keyframes cart-shake { 0%,100% { transform: scale(1);} 25% { transform: scale(1.3) rotate(-10deg);} 75% { transform: scale(1.3) rotate(10deg);} }
+  .cart-shake { animation: cart-shake 0.5s ease-in-out; }
+  @keyframes fly-away {
+    0% { transform: scale(1) rotate(0deg); opacity: 1; }
+    50% { transform: scale(0.6) rotate(180deg); opacity: 1; }
+    100% { transform: scale(0.1) rotate(360deg); opacity: 0.2; }
+  }
+  .stars-display { display: inline-flex; gap: 2px; }
+  .star-filled { color: #fbbf24; }
+  .star-empty { color: #d1d5db; }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-900 antialiased">
@@ -53,7 +65,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo } = React;
 
-const APP_VERSION = '2.4.1';
+const APP_VERSION = '2.5.0';
 const MOHAMMED_PHONE = '966505835077';
 
 const LS_KEYS = {
@@ -61,7 +73,6 @@ const LS_KEYS = {
   ADMIN_TOKEN: 'umm_admin_token',
   DISMISSED_NOTIFS: 'umm_dismissed_notifs',
   DISMISSED_BROADCASTS: 'umm_dismissed_broadcasts',
-  LAST_CHAT_SEEN: 'umm_last_chat_seen',
   NOTIF_ASKED: 'umm_notif_asked_time',
   DISMISSED_LOW_STOCK: 'umm_dismissed_low_stock',
   BROADCASTS_SEEN: 'umm_broadcasts_seen',
@@ -86,6 +97,7 @@ const SOUND_PRESETS = {
   alert:{name:'🚨 تنبيه',pattern:[1200,800,1200],dur:0.2}, cash:{name:'💵 كاش',pattern:[1047,1319,1568],dur:0.18},
   blip:{name:'💬 نبضة',pattern:[600],dur:0.12}, ding:{name:'✨ دينغ',pattern:[1500],dur:0.3},
   buzz:{name:'📢 طنين',pattern:[300,250],dur:0.3}, success:{name:'🎉 نجاح',pattern:[523,659,784,1047],dur:0.25},
+  add:{name:'🛒 إضافة',pattern:[700,900,1100],dur:0.15},
   none:{name:'🔇 بدون',pattern:[],dur:0},
 };
 const BANNER_THEMES = [
@@ -128,7 +140,7 @@ const playPreset = (key, vol=0.15) => {
       const osc = ctx.createOscillator(); const g = ctx.createGain();
       osc.connect(g); g.connect(ctx.destination);
       osc.frequency.value = freq;
-      const start = ctx.currentTime + i * 0.14;
+      const start = ctx.currentTime + i * 0.12;
       g.gain.setValueAtTime(vol, start);
       g.gain.exponentialRampToValueAtTime(0.00001, start + p.dur);
       osc.start(start); osc.stop(start + p.dur + 0.05);
@@ -139,6 +151,7 @@ const playCustomAudio = (dataUrl) => { try { const a = new Audio(dataUrl); a.vol
 const playSound = (t) => {
   if (t==='click') playPreset('blip',0.05); else if (t==='cash') playPreset('cash',0.1);
   else if (t==='message') playPreset('blip',0.08); else if (t==='alert') playPreset('alert',0.12);
+  else if (t==='add') playPreset('add', 0.12);
 };
 const showBrowserNotification = (title, body, options={}) => {
   if (typeof Notification==='undefined') return;
@@ -253,6 +266,27 @@ function ImageUploader({ value, onChange, label='اختر صورة', maxDimensio
   );
 }
 
+/* ✅ v2.5.0: عرض النجوم */
+function StarDisplay({ rating = 0, size = 'text-base', interactive = false, onRate = null }) {
+  const stars = [1,2,3,4,5];
+  return (
+    <div className="stars-display">
+      {stars.map(n => {
+        const filled = n <= Math.round(rating);
+        if (interactive) {
+          return (
+            <button key={n} type="button" onClick={()=>onRate && onRate(n)}
+              className={`${size} transition hover:scale-125 active:scale-95 ${filled ? 'star-filled' : 'star-empty'}`}>
+              ★
+            </button>
+          );
+        }
+        return (<span key={n} className={`${size} ${filled ? 'star-filled' : 'star-empty'}`}>★</span>);
+      })}
+    </div>
+  );
+}
+
 function LowStockNotification({ products, onDismiss, onOpenStockManager }) {
   return (
     <div className="notif-pulse-red relative bg-gradient-to-br from-red-50 via-orange-50 to-amber-50 border-2 border-red-400 rounded-3xl p-3 md:p-5 shadow-xl space-y-3">
@@ -292,43 +326,20 @@ function NewOrderNotification({ order, onStatusChange, onDismiss, onComplete }) 
       <div className="flex items-start justify-between gap-2 md:gap-3">
         <div className="flex items-center gap-2 md:gap-3">
           <div className="w-10 h-10 md:w-14 md:h-14 bg-amber-500 rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-3xl shadow-md"><span className="bell-shake inline-block">🔔</span></div>
-          <div>
-            <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
-              <h3 className="font-black text-amber-900 text-sm md:text-xl">طلب جديد!</h3>
-              <span className="text-[8px] md:text-[10px] bg-amber-500 text-white font-black px-1.5 md:px-2.5 py-0.5 rounded-full">جديد</span>
-              <span className="text-[8px] md:text-[10px] bg-slate-900 text-white font-black px-1.5 md:px-2 py-0.5 rounded-md">#{order._id.slice(0,6)}</span>
-            </div>
-          </div>
+          <div><div className="flex items-center gap-1.5 md:gap-2 flex-wrap"><h3 className="font-black text-amber-900 text-sm md:text-xl">طلب جديد!</h3><span className="text-[8px] md:text-[10px] bg-amber-500 text-white font-black px-1.5 md:px-2.5 py-0.5 rounded-full">جديد</span><span className="text-[8px] md:text-[10px] bg-slate-900 text-white font-black px-1.5 md:px-2 py-0.5 rounded-md">#{order._id.slice(0,6)}</span></div></div>
         </div>
         <button onClick={()=>onDismiss(order._id)} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-white border-2 border-amber-300 text-amber-700 hover:bg-amber-100 flex items-center justify-center font-black text-sm md:text-lg shrink-0">✕</button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-3">
-        <div className="bg-white/80 rounded-xl md:rounded-2xl p-2 md:p-3 border border-amber-200">
-          <div className="text-[9px] md:text-[10px] text-slate-500 font-bold">👤 صاحب الطلب</div>
-          <div className="font-black text-slate-900 text-xs md:text-sm mt-0.5 md:mt-1">{order.buyer}</div>
-        </div>
-        <div className="bg-white/80 rounded-xl md:rounded-2xl p-2 md:p-3 border border-amber-200">
-          <div className="text-[9px] md:text-[10px] text-slate-500 font-bold">📍 الموقع</div>
-          <div className="font-black text-purple-700 text-xs md:text-sm mt-0.5 md:mt-1">{order.location || '—'}</div>
-        </div>
-        <div className="bg-white/80 rounded-xl md:rounded-2xl p-2 md:p-3 border border-amber-200">
-          <div className="text-[9px] md:text-[10px] text-slate-500 font-bold">💳 · ⏰</div>
-          <div className="font-black text-xs md:text-sm mt-0.5 md:mt-1">
-            <span className={`text-[9px] md:text-[11px] px-1.5 md:px-2 py-0.5 rounded-md ${(order.paymentMethod||'').includes('دين')?'bg-amber-100 text-amber-800':(order.paymentMethod||'').includes('تحويل')?'bg-blue-100 text-blue-800':'bg-emerald-100 text-emerald-800'}`}>{order.paymentMethod || 'نقدي'}</span>
-            <span className="text-slate-600 mr-1 md:mr-2 text-[10px] md:text-xs">{order.orderTime}</span>
-          </div>
-        </div>
+        <div className="bg-white/80 rounded-xl md:rounded-2xl p-2 md:p-3 border border-amber-200"><div className="text-[9px] md:text-[10px] text-slate-500 font-bold">👤 صاحب الطلب</div><div className="font-black text-slate-900 text-xs md:text-sm mt-0.5 md:mt-1">{order.buyer}</div></div>
+        <div className="bg-white/80 rounded-xl md:rounded-2xl p-2 md:p-3 border border-amber-200"><div className="text-[9px] md:text-[10px] text-slate-500 font-bold">📍 الموقع</div><div className="font-black text-purple-700 text-xs md:text-sm mt-0.5 md:mt-1">{order.location || '—'}</div></div>
+        <div className="bg-white/80 rounded-xl md:rounded-2xl p-2 md:p-3 border border-amber-200"><div className="text-[9px] md:text-[10px] text-slate-500 font-bold">💳 · ⏰</div><div className="font-black text-xs md:text-sm mt-0.5 md:mt-1"><span className={`text-[9px] md:text-[11px] px-1.5 md:px-2 py-0.5 rounded-md ${(order.paymentMethod||'').includes('دين')?'bg-amber-100 text-amber-800':(order.paymentMethod||'').includes('تحويل')?'bg-blue-100 text-blue-800':'bg-emerald-100 text-emerald-800'}`}>{order.paymentMethod || 'نقدي'}</span><span className="text-slate-600 mr-1 md:mr-2 text-[10px] md:text-xs">{order.orderTime}</span></div></div>
       </div>
       <div className="bg-white/80 rounded-xl md:rounded-2xl p-2 md:p-3 border border-amber-200">
         <div className="text-[9px] md:text-[10px] text-slate-500 font-bold mb-1 md:mb-2">📦 المنتجات ({(order.items||[]).length})</div>
-        <div className="flex flex-wrap gap-1 md:gap-2">
-          {(order.items||[]).map((it,i)=>(<span key={i} className="bg-amber-50 border border-amber-300 text-amber-900 text-[10px] md:text-xs font-bold px-1.5 md:px-2.5 py-0.5 md:py-1 rounded-md md:rounded-lg">{it.emoji||'🛒'} {it.name} × {it.qty}</span>))}
-        </div>
+        <div className="flex flex-wrap gap-1 md:gap-2">{(order.items||[]).map((it,i)=>(<span key={i} className="bg-amber-50 border border-amber-300 text-amber-900 text-[10px] md:text-xs font-bold px-1.5 md:px-2.5 py-0.5 md:py-1 rounded-md md:rounded-lg">{it.emoji||'🛒'} {it.name} × {it.qty}</span>))}</div>
       </div>
-      <div className="bg-slate-900 text-white rounded-xl md:rounded-2xl p-2 md:p-3 flex items-center justify-between">
-        <span className="font-bold text-xs md:text-sm">💰 الإجمالي:</span>
-        <span className="font-black text-lg md:text-2xl text-amber-400">{(Number(order.totalAmount)||0).toFixed(2)} <span className="text-[10px] md:text-sm">ر.س</span></span>
-      </div>
+      <div className="bg-slate-900 text-white rounded-xl md:rounded-2xl p-2 md:p-3 flex items-center justify-between"><span className="font-bold text-xs md:text-sm">💰 الإجمالي:</span><span className="font-black text-lg md:text-2xl text-amber-400">{(Number(order.totalAmount)||0).toFixed(2)} <span className="text-[10px] md:text-sm">ر.س</span></span></div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 md:gap-2">
         {ORDER_STATUSES.map((st, i) => {
           const passed = currentIdx===-1 ? false : i <= currentIdx;
@@ -357,10 +368,7 @@ function DebtRequestNotification({ request, debtAmount, onSettle, onDismiss }) {
       <div className="flex items-start justify-between gap-2 md:gap-3">
         <div className="flex items-center gap-2 md:gap-3">
           <div className="w-10 h-10 md:w-14 md:h-14 bg-emerald-500 rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-3xl shadow-md"><span className="bell-shake inline-block">💵</span></div>
-          <div>
-            <h3 className="font-black text-emerald-900 text-sm md:text-xl">طلب تسديد دين!</h3>
-            <p className="text-[10px] md:text-xs text-emerald-700 mt-0.5 font-bold">{request.name} يريد تسديد دينه</p>
-          </div>
+          <div><h3 className="font-black text-emerald-900 text-sm md:text-xl">طلب تسديد دين!</h3><p className="text-[10px] md:text-xs text-emerald-700 mt-0.5 font-bold">{request.name} يريد تسديد دينه</p></div>
         </div>
         <button onClick={()=>onDismiss(request.id)} className="w-7 h-7 md:w-9 md:h-9 rounded-full bg-white border-2 border-emerald-300 text-emerald-700 hover:bg-emerald-100 flex items-center justify-center font-black text-sm md:text-lg shrink-0">✕</button>
       </div>
@@ -401,14 +409,21 @@ function GroceryApp() {
   const [debtRequests, setDebtRequests] = useState([]);
   const [broadcasts, setBroadcasts] = useState([]);
 
-  /* ✅ v2.4.1: تحميل الحسابات */
+  /* ✅ v2.5.0: تقييمات المنتجات + الاقتراحات + قراءة الدردشة */
+  const [productRatings, setProductRatings] = useState({}); // { productId: { userName: rating } }
+  const [suggestions, setSuggestions] = useState([]);
+  const [userChatRead, setUserChatRead] = useState({}); // { userName: lastTimestamp }
+
   const [userAccounts, setUserAccounts] = useState({});
   const [accountsLoaded, setAccountsLoaded] = useState(false);
 
   const [settingsModal, setSettingsModal] = useState(null);
   const [passwordPrompt, setPasswordPrompt] = useState(null);
-  /* ✅ v2.4.1: نافذة الجرس */
   const [broadcastPanelOpen, setBroadcastPanelOpen] = useState(false);
+  /* ✅ v2.5.0: تفاصيل المنتج */
+  const [productDetailsModal, setProductDetailsModal] = useState(null);
+  /* ✅ v2.5.0: نافذة اقتراح */
+  const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
 
   const [adminPin, setAdminPin] = useState('3421');
   const [pinChangeModal, setPinChangeModal] = useState(null);
@@ -448,25 +463,22 @@ function GroceryApp() {
   const [ratingModal, setRatingModal] = useState(null);
   const [customerToast, setCustomerToast] = useState(null);
   const [debtDetailsOpen, setDebtDetailsOpen] = useState(false);
+  /* ✅ v2.5.0: اهتزاز السلة */
+  const [cartShake, setCartShake] = useState(false);
   const chatEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
 
   const [dismissedNotifs, setDismissedNotifs] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_KEYS.DISMISSED_NOTIFS)||'[]'); } catch { return []; } });
   const [dismissedBroadcasts, setDismissedBroadcasts] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_KEYS.DISMISSED_BROADCASTS)||'[]'); } catch { return []; } });
-  const [lastChatSeen, setLastChatSeen] = useState(() => { try { return Number(localStorage.getItem(LS_KEYS.LAST_CHAT_SEEN)||0); } catch { return 0; } });
   const [dismissedLowStock, setDismissedLowStock] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_KEYS.DISMISSED_LOW_STOCK)||'[]'); } catch { return []; } });
-  /* ✅ v2.4.1: آخر إعلان شوهد في الجرس */
   const [broadcastsSeen, setBroadcastsSeen] = useState(() => { try { return Number(localStorage.getItem(LS_KEYS.BROADCASTS_SEEN)||0); } catch { return 0; } });
 
   useEffect(() => { try { localStorage.setItem(LS_KEYS.DISMISSED_NOTIFS, JSON.stringify(dismissedNotifs)); } catch {} }, [dismissedNotifs]);
   useEffect(() => { try { localStorage.setItem(LS_KEYS.DISMISSED_BROADCASTS, JSON.stringify(dismissedBroadcasts)); } catch {} }, [dismissedBroadcasts]);
-  useEffect(() => { try { localStorage.setItem(LS_KEYS.LAST_CHAT_SEEN, String(lastChatSeen)); } catch {} }, [lastChatSeen]);
   useEffect(() => { try { localStorage.setItem(LS_KEYS.DISMISSED_LOW_STOCK, JSON.stringify(dismissedLowStock)); } catch {} }, [dismissedLowStock]);
   useEffect(() => { try { localStorage.setItem(LS_KEYS.BROADCASTS_SEEN, String(broadcastsSeen)); } catch {} }, [broadcastsSeen]);
 
-  /* ✅ v2.4.1: حساب عدد الإعلانات غير المقروءة */
-  const unreadBroadcastsCount = useMemo(() => {
-    return broadcasts.filter(b => (b.timestamp || 0) > broadcastsSeen).length;
-  }, [broadcasts, broadcastsSeen]);
+  const unreadBroadcastsCount = useMemo(() => broadcasts.filter(b => (b.timestamp || 0) > broadcastsSeen).length, [broadcasts, broadcastsSeen]);
 
   const newOrderNotifications = useMemo(() => orders.filter(o => {
     if (!o.status) return false;
@@ -476,37 +488,63 @@ function GroceryApp() {
     return true;
   }), [orders, dismissedNotifs]);
 
+  /* ✅ v2.5.0: قراءة الدردشة لكل مستخدم من السحابة */
+  const myLastChatSeen = useMemo(() => {
+    if (!currentChatUser) return 0;
+    return userChatRead[currentChatUser] || 0;
+  }, [currentChatUser, userChatRead]);
+
   const unreadChatCount = useMemo(() => {
-    if (!isAdminAuthenticated) return 0;
+    if (!currentChatUser) return 0;
     if (activeTab === 'chat') return 0;
-    return chatMessages.filter(m => { const ts = (m.timestamp?.seconds||0)*1000; return ts > lastChatSeen && m.sender !== currentChatUser; }).length;
-  }, [chatMessages, lastChatSeen, activeTab, isAdminAuthenticated, currentChatUser]);
+    return chatMessages.filter(m => {
+      const ts = (m.timestamp?.seconds||0)*1000;
+      return ts > myLastChatSeen && m.sender !== currentChatUser;
+    }).length;
+  }, [chatMessages, myLastChatSeen, activeTab, currentChatUser]);
+
+  /* ✅ v2.5.0: عدد اقتراحات جديدة للإداري */
+  const newSuggestionsCount = useMemo(() => {
+    if (!isAdminAuthenticated) return 0;
+    return suggestions.filter(s => s.status === 'pending').length;
+  }, [suggestions, isAdminAuthenticated]);
 
   const visibleBroadcasts = useMemo(() => broadcasts.filter(b => !dismissedBroadcasts.includes(b.id)), [broadcasts, dismissedBroadcasts]);
-
   const lowStockProducts = useMemo(() => products.filter(p => (Number(p.stock)||0) <= 3), [products]);
   const visibleLowStockAlerts = useMemo(() => lowStockProducts.filter(p => !dismissedLowStock.includes(p.id)), [lowStockProducts, dismissedLowStock]);
 
+  /* ✅ v2.5.0: تحديث قراءة الدردشة عند فتحها */
   useEffect(() => {
-    if (activeTab === 'chat' && chatMessages.length > 0) {
+    if (activeTab === 'chat' && chatMessages.length > 0 && currentChatUser) {
       const maxTs = Math.max(...chatMessages.map(m => (m.timestamp?.seconds||0)*1000));
-      if (maxTs > lastChatSeen) setLastChatSeen(maxTs);
+      if (maxTs > myLastChatSeen) {
+        const newMap = { ...userChatRead, [currentChatUser]: maxTs };
+        setUserChatRead(newMap);
+        if (dbInstance) {
+          try { updateStoreDataDoc('userChatRead', { map: newMap }); } catch {}
+        }
+      }
     }
-  }, [activeTab, chatMessages]);
+  }, [activeTab, chatMessages, currentChatUser]);
 
-  /* ✅ v2.4.1: منطق أفضل لإشعار الإشعارات */
+  /* ✅ v2.5.0: التمرير لأسفل الدردشة فوراً عند الدخول */
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+      }, 100);
+    }
+  }, [activeTab]);
+
   useEffect(() => {
     if (typeof Notification === 'undefined') return;
-    /* إذا كان مفعّل → لا نطلب */
     if (Notification.permission !== 'default') { setNotifPermission(Notification.permission); return; }
-    /* إذا سألناه سابقاً خلال أسبوع → لا نطلب */
-    let lastAsked = 0;
-    try { lastAsked = Number(localStorage.getItem(LS_KEYS.NOTIF_ASKED) || 0); } catch {}
+    let lastAsked = 0; try { lastAsked = Number(localStorage.getItem(LS_KEYS.NOTIF_ASKED) || 0); } catch {}
     const sevenDays = 7 * 24 * 60 * 60 * 1000;
-    if (Date.now() - lastAsked > sevenDays) {
-      const t = setTimeout(()=>setShowNotifPrompt(true), 4000);
-      return ()=>clearTimeout(t);
-    }
+    if (Date.now() - lastAsked > sevenDays) { const t = setTimeout(()=>setShowNotifPrompt(true), 4000); return ()=>clearTimeout(t); }
   }, []);
 
   const requestNotifPermission = async () => {
@@ -647,7 +685,13 @@ function GroceryApp() {
           const pinDoc = allDocs.find(d => d._id==='adminPinConfig'); if (pinDoc && pinDoc.pin) setAdminPin(pinDoc.pin);
           const ua = allDocs.find(d => d._id==='userAccounts');
           if (ua && ua.accounts && typeof ua.accounts === 'object') setUserAccounts(ua.accounts);
-          /* ✅ v2.4.1: تأكيد تحميل الحسابات */
+          /* ✅ v2.5.0 */
+          const prt = allDocs.find(d => d._id==='productRatings');
+          if (prt && prt.data && typeof prt.data === 'object') setProductRatings(prt.data);
+          const sg = allDocs.find(d => d._id==='suggestions');
+          if (sg && Array.isArray(sg.list)) setSuggestions(sg.list);
+          const ucr = allDocs.find(d => d._id==='userChatRead');
+          if (ucr && ucr.map && typeof ucr.map === 'object') setUserChatRead(ucr.map);
           setAccountsLoaded(true);
           const dr = allDocs.find(d => d._id==='debtPaymentRequests'); if (dr && Array.isArray(dr.list)) setDebtRequests(dr.list);
           const br = allDocs.find(d => d._id==='broadcastNotifications'); if (br && Array.isArray(br.list)) setBroadcasts([...br.list].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)).slice(0, 20));
@@ -657,7 +701,6 @@ function GroceryApp() {
         }, (err) => {
           setCloudStatus('error'); setCloudMessage('خطأ: ' + err.message);
           setLoadingStates(s => ({ ...s, products: false }));
-          /* ✅ حتى لو فشل، لا نُقفل المستخدمين إلى الأبد */
           setAccountsLoaded(true);
         });
         unsubscribers.push(unsub1);
@@ -684,7 +727,6 @@ function GroceryApp() {
       }
     };
     const t = setTimeout(setup, 150);
-    /* ✅ v2.4.1: إذا تأخر التحميل أكثر من 8 ثوانٍ → افتح الباب لتفادي التعليق */
     const safetyTimeout = setTimeout(()=>{ if (isMounted) setAccountsLoaded(true); }, 8000);
     const onReady = () => { clearTimeout(t); setup(); };
     window.addEventListener('firebase-sdk-ready', onReady);
@@ -726,6 +768,19 @@ function GroceryApp() {
     const acc = userAccounts[currentChatUser];
     return acc?.displayName || currentChatUser;
   }, [currentChatUser, userAccounts]);
+
+  /* ✅ v2.5.0: حساب متوسط تقييم المنتج */
+  const getProductRating = (productId) => {
+    const ratings = productRatings[String(productId)] || {};
+    const values = Object.values(ratings).filter(v => typeof v === 'number' && v > 0);
+    if (values.length === 0) return { avg: 0, count: 0, myRating: 0 };
+    const sum = values.reduce((s, v) => s + v, 0);
+    return {
+      avg: sum / values.length,
+      count: values.length,
+      myRating: currentChatUser ? (ratings[currentChatUser] || 0) : 0,
+    };
+  };
 
   const ratingsByUser = useMemo(() => {
     const map = {};
@@ -777,92 +832,156 @@ function GroceryApp() {
     await updateStoreDataDoc('userAccounts', { accounts: newAccounts });
   };
 
-  const proceedLogin = (userName) => {
-    if (userName === 'الدعم') {
-      setPinInput(''); setPinError(''); setSupportPinModalOpen(true);
-    } else {
-      setCurrentChatUser(userName);
-      setIdentityModalOpen(false);
-      try { localStorage.setItem(LS_KEYS.DEVICE_USER, userName); } catch {}
-    }
+  /* ✅ v2.5.0: تقييم منتج */
+  const handleRateProduct = async (productId, rating) => {
+    if (!currentChatUser) return;
+    if (currentChatUser === 'الدعم') { setNotificationModal({ title:'⚠️', message:'الإداري لا يقيم المنتجات.' }); return; }
+    playSound('click');
+    const newRatings = { ...productRatings };
+    const pid = String(productId);
+    if (!newRatings[pid]) newRatings[pid] = {};
+    newRatings[pid][currentChatUser] = rating;
+    setProductRatings(newRatings);
+    try { await updateStoreDataDoc('productRatings', { data: newRatings }); }
+    catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
 
+  /* ✅ v2.5.0: إرسال اقتراح */
+  const handleSendSuggestion = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const text = (fd.get('text') || '').trim();
+    if (!text || !currentChatUser) return;
+    playSound('cash');
+    const newSg = {
+      id: 'sg_' + Date.now(),
+      from: currentChatUser,
+      text,
+      timestamp: Date.now(),
+      timeString: new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}),
+      status: 'pending',
+    };
+    try {
+      const newList = [newSg, ...suggestions];
+      await updateStoreDataDoc('suggestions', { list: newList });
+      setSuggestionModalOpen(false);
+      setNotificationModal({ title:'✅ تم الإرسال', message:'وصل اقتراحك للإدارة، شكراً لك! 🌟' });
+    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+  };
+
+  const handleUpdateSuggestionStatus = async (id, status) => {
+    playSound('click');
+    const newList = suggestions.map(s => s.id === id ? { ...s, status } : s);
+    try { await updateStoreDataDoc('suggestions', { list: newList }); }
+    catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+  };
+
+  const handleDeleteSuggestion = async (id) => {
+    playSound('click');
+    if (!confirm('حذف هذا الاقتراح؟')) return;
+    const newList = suggestions.filter(s => s.id !== id);
+    try { await updateStoreDataDoc('suggestions', { list: newList }); }
+    catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+  };
+
+  /* ✅ v2.5.0: أنيميشن الطيران للسلة */
+  const flyToCart = (sourceEl, imageUrl, emoji) => {
+    const cartBtn = document.getElementById('floating-cart-btn');
+    if (!cartBtn || !sourceEl) return;
+    const startRect = sourceEl.getBoundingClientRect();
+    const endRect = cartBtn.getBoundingClientRect();
+    const flyingEl = document.createElement('div');
+    flyingEl.style.cssText = `
+      position: fixed;
+      left: ${startRect.left}px;
+      top: ${startRect.top}px;
+      width: ${Math.min(startRect.width, 80)}px;
+      height: ${Math.min(startRect.height, 80)}px;
+      border-radius: 12px;
+      z-index: 9999;
+      pointer-events: none;
+      transition: all 0.85s cubic-bezier(0.4, -0.3, 0.6, 1);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      background: white;
+      overflow: hidden;
+    `;
+    if (imageUrl) {
+      const img = document.createElement('img');
+      img.src = imageUrl;
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+      flyingEl.appendChild(img);
+    } else {
+      flyingEl.textContent = emoji || '🛒';
+    }
+    document.body.appendChild(flyingEl);
+    requestAnimationFrame(() => {
+      flyingEl.style.left = (endRect.left + endRect.width/2 - 20) + 'px';
+      flyingEl.style.top = (endRect.top + endRect.height/2 - 20) + 'px';
+      flyingEl.style.width = '40px';
+      flyingEl.style.height = '40px';
+      flyingEl.style.opacity = '0.15';
+      flyingEl.style.transform = 'rotate(720deg)';
+    });
+    setTimeout(() => {
+      try { flyingEl.remove(); } catch {}
+      setCartShake(true);
+      setTimeout(() => setCartShake(false), 500);
+    }, 880);
+  };
+
+  const proceedLogin = (userName) => {
+    if (userName === 'الدعم') { setPinInput(''); setPinError(''); setSupportPinModalOpen(true); }
+    else { setCurrentChatUser(userName); setIdentityModalOpen(false); try { localStorage.setItem(LS_KEYS.DEVICE_USER, userName); } catch {} }
+  };
   const attemptLogin = (userName) => {
     const acc = userAccounts[userName];
-    if (acc && acc.password && acc.password.length > 0) {
-      setPasswordPrompt({ userName, input: '', error: '' });
-    } else {
-      proceedLogin(userName);
-    }
+    if (acc && acc.password && acc.password.length > 0) setPasswordPrompt({ userName, input: '', error: '' });
+    else proceedLogin(userName);
   };
-
   const handleVerifyUserPassword = (e) => {
     if (e) e.preventDefault();
     if (!passwordPrompt) return;
     const acc = userAccounts[passwordPrompt.userName];
-    if (acc && acc.password === passwordPrompt.input) {
-      playSound('cash');
-      const name = passwordPrompt.userName;
-      setPasswordPrompt(null);
-      proceedLogin(name);
-    } else {
-      playSound('click');
-      setPasswordPrompt({ ...passwordPrompt, error: 'كلمة المرور غير صحيحة!' });
-    }
+    if (acc && acc.password === passwordPrompt.input) { playSound('cash'); const name = passwordPrompt.userName; setPasswordPrompt(null); proceedLogin(name); }
+    else { playSound('click'); setPasswordPrompt({ ...passwordPrompt, error: 'كلمة المرور غير صحيحة!' }); }
   };
-
   const handleIdentityPick = (user) => {
-    /* ✅ v2.4.1: لا تسمح بالاختيار قبل تحميل الحسابات */
-    if (!accountsLoaded) {
-      setNotificationModal({ title:'⏳ جارٍ التحميل', message:'يتم تحميل بيانات الحسابات، الرجاء المحاولة بعد لحظات.' });
-      return;
-    }
-    playSound('cash');
-    attemptLogin(user);
+    if (!accountsLoaded) { setNotificationModal({ title:'⏳ جارٍ التحميل', message:'يتم تحميل بيانات الحسابات، الرجاء المحاولة بعد لحظات.' }); return; }
+    playSound('cash'); attemptLogin(user);
   };
-
   const handleUserChange = (newUser) => {
     playSound('click');
     const wasAdmin = currentChatUser === 'الدعم';
     const goingToAdmin = newUser === 'الدعم';
-    if (wasAdmin && !goingToAdmin) {
-      setIsAdminAuthenticated(false);
-      try { localStorage.removeItem(LS_KEYS.ADMIN_TOKEN); } catch {}
-      setActiveTab('products');
-    }
+    if (wasAdmin && !goingToAdmin) { setIsAdminAuthenticated(false); try { localStorage.removeItem(LS_KEYS.ADMIN_TOKEN); } catch {} setActiveTab('products'); }
     if (goingToAdmin && isAdminAuthenticated && wasAdmin) return;
-    setCurrentChatUser('');
-    try { localStorage.removeItem(LS_KEYS.DEVICE_USER); } catch {}
+    setCurrentChatUser(''); try { localStorage.removeItem(LS_KEYS.DEVICE_USER); } catch {}
     attemptLogin(newUser);
   };
-
   const handleVerifySupportPin = (e) => {
     e.preventDefault();
     if (pinInput === adminPin) {
-      playSound('cash');
-      setCurrentChatUser('الدعم'); setIsAdminAuthenticated(true); setSupportPinModalOpen(false); setActiveTab('admin'); setPinInput(''); setPinError('');
+      playSound('cash'); setCurrentChatUser('الدعم'); setIsAdminAuthenticated(true); setSupportPinModalOpen(false); setActiveTab('admin'); setPinInput(''); setPinError('');
       try { localStorage.setItem(LS_KEYS.DEVICE_USER, 'الدعم'); localStorage.setItem(LS_KEYS.ADMIN_TOKEN, JSON.stringify({ createdAt:Date.now(), expiresAt:Date.now() + 30*24*60*60*1000 })); } catch {}
     } else { playSound('click'); setPinError('كلمة المرور غير صحيحة!'); }
   };
-  const handleCancelSupportPin = () => {
-    playSound('click'); setSupportPinModalOpen(false); setPinInput(''); setPinError('');
-    if (currentChatUser && currentChatUser !== 'الدعم') { } else { setIdentityModalOpen(true); }
-  };
+  const handleCancelSupportPin = () => { playSound('click'); setSupportPinModalOpen(false); setPinInput(''); setPinError(''); if (currentChatUser && currentChatUser !== 'الدعم') {} else { setIdentityModalOpen(true); } };
   const handleLogout = () => {
     if (!confirm('هل أنت متأكد من تسجيل الخروج؟')) return;
     playSound('click');
     if (dbInstance) { try { const { doc, deleteDoc } = window.FirebaseSDK; deleteDoc(doc(dbInstance, COL.PRESENCE, sessionId)).catch(()=>{}); } catch {} }
-    try { localStorage.removeItem(LS_KEYS.DEVICE_USER); localStorage.removeItem(LS_KEYS.ADMIN_TOKEN); localStorage.removeItem(LS_KEYS.LAST_CHAT_SEEN); } catch {}
+    try { localStorage.removeItem(LS_KEYS.DEVICE_USER); localStorage.removeItem(LS_KEYS.ADMIN_TOKEN); } catch {}
     setCurrentChatUser(''); setIsAdminAuthenticated(false); setIdentityModalOpen(true); setActiveTab('products'); setSettingsModal(null);
   };
-
   const handleSaveAccountSettings = async () => {
     if (!settingsModal || !currentChatUser) return;
     const { displayName, newPassword, confirmPassword, currentPassword, removePassword } = settingsModal;
     const acc = userAccounts[currentChatUser] || {};
-    if (acc.password && acc.password.length > 0 && !removePassword) {
-      if (currentPassword !== acc.password) { setNotificationModal({ title:'⚠️', message:'كلمة المرور الحالية غير صحيحة!' }); return; }
-    }
+    if (acc.password && acc.password.length > 0 && !removePassword && currentPassword !== acc.password) { setNotificationModal({ title:'⚠️', message:'كلمة المرور الحالية غير صحيحة!' }); return; }
     if (!removePassword && newPassword && newPassword !== confirmPassword) { setNotificationModal({ title:'⚠️', message:'كلمتا المرور غير متطابقتين!' }); return; }
     if (!removePassword && newPassword && newPassword.length < 4) { setNotificationModal({ title:'⚠️', message:'كلمة المرور يجب أن تكون 4 أحرف على الأقل.' }); return; }
     const updated = { displayName: (displayName || currentChatUser).trim() };
@@ -871,8 +990,7 @@ function GroceryApp() {
     else updated.password = acc.password || '';
     try {
       await saveUserAccount(currentChatUser, updated);
-      playSound('cash');
-      setSettingsModal(null);
+      playSound('cash'); setSettingsModal(null);
       setNotificationModal({ title:'✅ تم الحفظ', message:'تم حفظ إعدادات حسابك بنجاح.' });
     } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
@@ -884,11 +1002,8 @@ function GroceryApp() {
     if (!newPin || newPin.length < 4) { setNotificationModal({ title:'⚠️', message:'كلمة المرور الجديدة يجب أن تكون 4 أرقام على الأقل.' }); return; }
     if (newPin !== confirm) { setNotificationModal({ title:'⚠️', message:'كلمة المرور الجديدة وتأكيدها غير متطابقين.' }); return; }
     playSound('cash');
-    try {
-      await updateStoreDataDoc('adminPinConfig', { pin: newPin, updatedAt: Date.now() });
-      setAdminPin(newPin); setPinChangeModal(null);
-      setNotificationModal({ title:'🔐 تم تغيير PIN', message:'كلمة المرور الجديدة فعّالة الآن على كل الأجهزة.' });
-    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+    try { await updateStoreDataDoc('adminPinConfig', { pin: newPin, updatedAt: Date.now() }); setAdminPin(newPin); setPinChangeModal(null); setNotificationModal({ title:'🔐 تم', message:'كلمة المرور الجديدة فعّالة.' }); }
+    catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
   const toggleStoreStatus = async () => {
     playSound('cash');
@@ -944,10 +1059,8 @@ function GroceryApp() {
   const handleSaveBanner = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    try {
-      await updateStoreDataDoc('banner', { title:fd.get('title')||'', kicker:fd.get('kicker')||'', message:fd.get('message')||'', themeId:bannerModal.themeId||'amber', updatedAt:Date.now() });
-      setBannerModal(null); setNotificationModal({ title:'✅ تم', message:'تم حفظ البانر.' });
-    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+    try { await updateStoreDataDoc('banner', { title:fd.get('title')||'', kicker:fd.get('kicker')||'', message:fd.get('message')||'', themeId:bannerModal.themeId||'amber', updatedAt:Date.now() }); setBannerModal(null); setNotificationModal({ title:'✅ تم', message:'تم حفظ البانر.' }); }
+    catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
   const handleSaveCategories = async () => {
     try { await updateStoreDataDoc('categories', { list:categoriesModal }); setCategoriesModal(null); setNotificationModal({ title:'✅ تم', message:`${categoriesModal.length} قسم.` }); }
@@ -1032,11 +1145,8 @@ function GroceryApp() {
     }
     playSound('cash');
     const newDebts = { ...debtsMap }; newDebts[member.name] = newAmount;
-    try {
-      await updateStoreDataDoc('debts', newDebts);
-      await addBotChatDoc({ sender:'الدعم', text:actionMsg, timeString:new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) });
-      setDebtModal(null); setNotificationModal({ title:'✅ تم', message:actionMsg });
-    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+    try { await updateStoreDataDoc('debts', newDebts); await addBotChatDoc({ sender:'الدعم', text:actionMsg, timeString:new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) }); setDebtModal(null); setNotificationModal({ title:'✅ تم', message:actionMsg }); }
+    catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
   const handleSettleDebt = async () => {
     const amount = parseFloat(payAmountInput);
@@ -1056,23 +1166,55 @@ function GroceryApp() {
     const text = (e.target.chatInput?.value || '').trim();
     if (!text || !dbInstance) return;
     playSound('message');
-    try { await addChatDoc({ sender:currentChatUser, text, timeString:new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) }); e.target.chatInput.value = ''; }
-    catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+    try {
+      await addChatDoc({ sender:currentChatUser, text, timeString:new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) });
+      e.target.chatInput.value = '';
+      setTimeout(() => {
+        chatEndRef.current?.scrollIntoView({ behavior:'smooth' });
+        if (chatContainerRef.current) chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }, 150);
+    } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
   const handleDeleteChatMessage = async (docId) => { playSound('click'); try { await deleteChatDoc(docId); } catch(e){} };
-  const addToCart = (product) => {
+
+  /* ✅ v2.5.0: addToCart مع أنيميشن */
+  const addToCart = (product, sourceEl = null) => {
     const stock = Number(product.stock) || 0;
     if (stock <= 0) { setNotificationModal({ title:'❌ نفذت الكمية', message:`(${product.name}) غير متوفر حالياً.` }); return; }
-    playSound('click');
+    let alreadyMax = false;
     setCart(prev => {
       const ex = prev.find(i => String(i.id)===String(product.id));
       if (ex) {
-        if (ex.qty >= stock) { setNotificationModal({ title:'⚠️ الكمية غير كافية', message:`المتوفر فقط ${stock} من (${product.name}).` }); return prev; }
+        if (ex.qty >= stock) { alreadyMax = true; return prev; }
         return prev.map(i => String(i.id)===String(product.id) ? { ...i, qty:i.qty+1 } : i);
       }
       return [...prev, { ...product, qty:1 }];
     });
+    if (alreadyMax) { setNotificationModal({ title:'⚠️ الكمية غير كافية', message:`المتوفر فقط ${stock} من (${product.name}).` }); return; }
+    playSound('add');
+    const imgSrc = imageMap[String(product.id)] || product.imageUrl || '';
+    if (sourceEl) flyToCart(sourceEl, imgSrc, product.emoji || '🛒');
+    else { setCartShake(true); setTimeout(() => setCartShake(false), 500); }
   };
+
+  /* ✅ v2.5.0: شراء فوري */
+  const buyNow = (product, sourceEl = null) => {
+    const stock = Number(product.stock) || 0;
+    if (stock <= 0) { setNotificationModal({ title:'❌ نفذت الكمية', message:`(${product.name}) غير متوفر حالياً.` }); return; }
+    if (!storeStatus.isOpen) { setNotificationModal({ title:'🚫 مغلق', message:'المتجر مغلق حالياً.' }); return; }
+    playSound('add');
+    const imgSrc = imageMap[String(product.id)] || product.imageUrl || '';
+    if (sourceEl) flyToCart(sourceEl, imgSrc, product.emoji || '🛒');
+    setCartDrawerOpen(false);
+    setTimeout(() => {
+      setCart([{ ...product, qty: 1 }]);
+      setProductDetailsModal(null);
+      setPendingPaymentMethod(null);
+      setSelectedLocation('');
+      setLocationModalOpen(true);
+    }, 450);
+  };
+
   const updateCartQty = (id, delta) => {
     playSound('click');
     setCart(prev => {
@@ -1143,12 +1285,68 @@ function GroceryApp() {
   const statusColor = cloudStatus==='online' ? 'bg-emerald-400' : cloudStatus==='connecting' ? 'bg-amber-400 animate-pulse' : 'bg-red-400';
   const isAdmin = currentChatUser === 'الدعم' && isAdminAuthenticated;
 
-  /* ✅ v2.4.1: فتح/إغلاق لوحة الجرس */
   const openBroadcastPanel = () => {
     playSound('click');
     setBroadcastPanelOpen(true);
     const newestTs = broadcasts.length > 0 ? (broadcasts[0].timestamp || 0) : Date.now();
     setBroadcastsSeen(newestTs);
+  };
+
+  /* ✅ v2.5.0: عرض تفاصيل المنتج */
+  const openProductDetails = (product) => {
+    playSound('click');
+    setProductDetailsModal({ product });
+  };
+
+  const renderProductCard = (p) => {
+    const imgSrc = imageMap[String(p.id)] || p.imageUrl || '';
+    const stock = Number(p.stock) || 0;
+    const rating = getProductRating(p.id);
+    const stockBadge = stock <= 0 ? { bg:'bg-red-500 text-white border-red-600', text:'❌ نفذت' }
+      : stock <= 3 ? { bg:'bg-amber-500 text-white border-amber-600', text:`⚠️ ${stock}` }
+      : { bg:'bg-emerald-500 text-white border-emerald-600', text:`📦 ${stock}` };
+    return (
+      <div key={p.id} className="bg-white rounded-2xl p-2.5 md:p-4 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col relative">
+        <button type="button" onClick={(e)=>{ e.stopPropagation(); openProductDetails(p); }}
+          className="relative w-full h-32 md:h-48 bg-white rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-3 border border-slate-100 flex items-center justify-center cursor-pointer group">
+          {imgSrc ? (
+            <img src={imgSrc} alt={p.name} id={`product-img-${p.id}`} className="w-full h-full object-contain p-1 md:p-2 group-hover:scale-105 transition"
+              onError={e=>{ e.target.style.display='none'; if (e.target.nextElementSibling) e.target.nextElementSibling.style.display='flex'; }} />
+          ) : null}
+          <div className="w-full h-full flex items-center justify-center text-3xl md:text-5xl bg-slate-50" style={{ display: imgSrc?'none':'flex' }}>{p.emoji || '🛒'}</div>
+          <div className={`absolute top-1.5 right-1.5 md:top-2 md:right-2 px-2 py-0.5 rounded-full text-[9px] md:text-[11px] font-black border-2 shadow-md ${stockBadge.bg}`}>{stockBadge.text}</div>
+        </button>
+        <button type="button" onClick={()=>openProductDetails(p)} className="text-right">
+          <span className="text-[9px] md:text-[10px] font-extrabold bg-slate-100 text-slate-600 px-1.5 md:px-2 py-0.5 rounded-md self-start inline-block">{p.category || 'عام'}</span>
+          <h3 className="font-bold text-slate-800 text-[11px] md:text-sm mt-1 md:mt-1.5 line-clamp-2">{p.name}</h3>
+        </button>
+        {/* ✅ التقييم */}
+        <div className="flex items-center gap-1 mt-1">
+          <StarDisplay rating={rating.avg} size="text-[10px] md:text-sm" />
+          <span className="text-[9px] md:text-[10px] text-slate-500 font-bold">
+            {rating.count > 0 ? `(${rating.count})` : 'جديد'}
+          </span>
+        </div>
+        {p.desc && <p className="text-[10px] md:text-[11px] text-slate-500 mt-0.5 line-clamp-1">{p.desc}</p>}
+        <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t border-slate-100 space-y-1.5 md:space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs md:text-base font-black text-brand">{(Number(p.price)||0).toFixed(2)} <span className="text-[9px] md:text-xs">ر.س</span></span>
+          </div>
+          <div className="grid grid-cols-2 gap-1 md:gap-1.5">
+            <button type="button" onClick={(e)=>{ e.stopPropagation(); addToCart(p, e.currentTarget.parentElement.parentElement.parentElement.querySelector('img')); }}
+              disabled={!storeStatus.isOpen || stock <= 0}
+              className={`font-bold py-1.5 md:py-2 rounded-lg md:rounded-xl text-[10px] md:text-xs ${(!storeStatus.isOpen || stock <= 0) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-100 hover:bg-slate-200 text-slate-800'}`}>
+              🛒 <span className="hidden md:inline">إضافة</span>
+            </button>
+            <button type="button" onClick={(e)=>{ e.stopPropagation(); buyNow(p, e.currentTarget.parentElement.parentElement.parentElement.querySelector('img')); }}
+              disabled={!storeStatus.isOpen || stock <= 0}
+              className={`btn-brand font-bold py-1.5 md:py-2 rounded-lg md:rounded-xl text-[10px] md:text-xs ${(!storeStatus.isOpen || stock <= 0) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : ''}`}>
+              ⚡ <span className="hidden md:inline">فوري</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1199,16 +1397,13 @@ function GroceryApp() {
                       {onlineUsers.length} متصل
                     </div>
                     {isAdmin && lowStockProducts.length > 0 && (
-                      <div className="flex items-center gap-1 bg-red-500/40 text-red-50 border border-red-300/50 px-1.5 md:px-2.5 py-0.5 rounded-full text-[8px] md:text-[10px] font-black whitespace-nowrap">
-                        ⚠️ {lowStockProducts.length}
-                      </div>
+                      <div className="flex items-center gap-1 bg-red-500/40 text-red-50 border border-red-300/50 px-1.5 md:px-2.5 py-0.5 rounded-full text-[8px] md:text-[10px] font-black whitespace-nowrap">⚠️ {lowStockProducts.length}</div>
                     )}
                   </div>
                 </div>
               </div>
 
               <div className="flex md:hidden items-center gap-1 shrink-0">
-                {/* ✅ زر الجرس في الجوال */}
                 {currentChatUser && (
                   <button onClick={openBroadcastPanel}
                     className="relative bg-black/20 backdrop-blur-sm border border-white/20 w-8 h-8 rounded-xl flex items-center justify-center text-white hover:bg-white/15 transition">
@@ -1240,7 +1435,6 @@ function GroceryApp() {
             </div>
 
             <div className="hidden md:flex items-center gap-2 md:flex-initial shrink-0">
-              {/* ✅ زر الجرس في الكمبيوتر */}
               {currentChatUser && (
                 <button onClick={openBroadcastPanel}
                   className="relative bg-black/20 backdrop-blur-sm border border-white/20 w-10 h-10 rounded-2xl flex items-center justify-center text-white hover:bg-white/15 transition"
@@ -1276,7 +1470,7 @@ function GroceryApp() {
             </div>
 
             <nav className="nav-scroll flex items-center gap-1 bg-black/20 p-1 rounded-xl md:rounded-2xl overflow-x-auto md:overflow-visible w-full md:w-auto md:flex-initial shrink-0">
-              {[['products','🏪 المنتجات'],['chat','💬 الدردشة'],['orders','📦 الطلبات'],['admin','⚙️ الإدارة']].map(([k,label]) => (
+              {[['products','🏪 المنتجات'],['suggestions','💡 اقتراحات'],['chat','💬 الدردشة'],['orders','📦 الطلبات'],['admin','⚙️ الإدارة']].map(([k,label]) => (
                 <button key={k} onClick={()=>{ playSound('click'); if(k==='admin' && !isAdminAuthenticated){ setPinInput(''); setPinError(''); setAdminPinModalOpen(true); } else setActiveTab(k); }}
                   className={`flex-shrink-0 flex-1 md:flex-none px-3 py-2 rounded-xl text-[11px] md:text-sm font-bold whitespace-nowrap relative ${activeTab===k ? 'tab-active shadow-sm' : 'text-white/85 hover:bg-white/10'}`}>
                   {label}
@@ -1285,9 +1479,9 @@ function GroceryApp() {
                       {unreadChatCount > 9 ? '9+' : unreadChatCount}
                     </span>
                   )}
-                  {k==='admin' && isAdmin && (newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length) > 0 && (
+                  {k==='admin' && isAdmin && (newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length + newSuggestionsCount) > 0 && (
                     <span className="absolute -top-1 -left-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 md:w-5 md:h-5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
-                      {newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length > 9 ? '9+' : newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length}
+                      {newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length + newSuggestionsCount > 9 ? '9+' : newOrderNotifications.length + debtRequests.length + visibleLowStockAlerts.length + newSuggestionsCount}
                     </span>
                   )}
                 </button>
@@ -1333,7 +1527,7 @@ function GroceryApp() {
                 {banner.message && <p className="text-[11px] md:text-xs mt-1 leading-relaxed opacity-95">{banner.message}</p>}
               </div>
             )}
-            
+
             <div className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-2 md:gap-3 md:items-center min-w-0 overflow-hidden">
               <div className="relative w-full md:w-56 lg:w-64 md:flex-shrink-0">
                 <input type="text" placeholder="ابحث..." value={productSearch} onChange={e=>setProductSearch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-9 pl-3 md:pr-10 md:pl-4 py-2 text-sm focus:outline-none" />
@@ -1351,31 +1545,72 @@ function GroceryApp() {
               <div className="bg-white rounded-3xl p-8 md:p-12 text-center text-slate-400 border border-slate-200"><div className="text-5xl opacity-40 mb-2">📦</div><p className="font-bold">لا توجد منتجات</p></div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4">
-                {filteredProducts.map(p => {
-                  const imgSrc = imageMap[String(p.id)] || p.imageUrl || '';
-                  const stock = Number(p.stock) || 0;
-                  const stockBadge = stock <= 0
-                    ? { bg:'bg-red-500 text-white border-red-600', text:'❌ نفذت' }
-                    : stock <= 3
-                      ? { bg:'bg-amber-500 text-white border-amber-600', text:`⚠️ ${stock}` }
-                      : { bg:'bg-emerald-500 text-white border-emerald-600', text:`📦 ${stock}` };
+                {filteredProducts.map(p => renderProductCard(p))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ✅ v2.5.0: تبويب الاقتراحات */}
+        {activeTab === 'suggestions' && (
+          <div className="space-y-3 md:space-y-4">
+            <div className="bg-gradient-to-l from-indigo-600 via-purple-600 to-pink-600 text-white rounded-2xl md:rounded-3xl p-5 md:p-6 shadow-md">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="text-4xl md:text-5xl">💡</div>
+                <div className="flex-1">
+                  <h2 className="text-lg md:text-2xl font-black">اقتراحاتكم تهمنا!</h2>
+                  <p className="text-[11px] md:text-sm text-white/90 mt-1 leading-relaxed">اقترح المنتجات والبضائع التي ترغب أن نوفرها في المتجر — كل اقتراح يصل للإدارة مباشرة.</p>
+                </div>
+                {currentChatUser && currentChatUser !== 'الدعم' && (
+                  <button onClick={()=>{ playSound('click'); setSuggestionModalOpen(true); }}
+                    className="bg-white text-purple-700 hover:bg-purple-50 font-black px-3 md:px-5 py-2 md:py-3 rounded-xl md:rounded-2xl text-[11px] md:text-sm shrink-0 flex items-center gap-1">
+                    ✍️ <span className="hidden md:inline">اقترح</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl md:rounded-3xl p-3 md:p-5 border border-slate-200 flex items-center justify-between">
+              <h2 className="font-black text-slate-900 text-base md:text-lg flex items-center gap-2"><span>📋</span> قائمة الاقتراحات</h2>
+              <span className="text-[11px] md:text-xs text-slate-500 font-bold">{suggestions.length} اقتراح</span>
+            </div>
+
+            {suggestions.length === 0 ? (
+              <div className="bg-white rounded-3xl p-8 md:p-12 text-center text-slate-400 border border-slate-200">
+                <div className="text-5xl opacity-40 mb-2">💭</div>
+                <p className="font-bold">لا توجد اقتراحات بعد</p>
+                <p className="text-xs mt-1">كن أول من يقترح منتجاً!</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                {suggestions.map(sg => {
+                  const isDone = sg.status === 'done';
+                  const isRejected = sg.status === 'rejected';
+                  const senderDisplay = userAccounts[sg.from]?.displayName || sg.from;
                   return (
-                    <div key={p.id} className="bg-white rounded-2xl p-2.5 md:p-4 border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col relative">
-                      <div className="relative w-full h-32 md:h-48 bg-white rounded-xl md:rounded-2xl overflow-hidden mb-2 md:mb-3 border border-slate-100 flex items-center justify-center">
-                        {imgSrc ? (<img src={imgSrc} alt={p.name} className="w-full h-full object-contain p-1 md:p-2" onError={e=>{ e.target.style.display='none'; if (e.target.nextElementSibling) e.target.nextElementSibling.style.display='flex'; }} />) : null}
-                        <div className="w-full h-full flex items-center justify-center text-3xl md:text-5xl bg-slate-50" style={{ display:imgSrc?'none':'flex' }}>{p.emoji || '🛒'}</div>
-                        <div className={`absolute top-1.5 right-1.5 md:top-2 md:right-2 px-2 py-0.5 rounded-full text-[9px] md:text-[11px] font-black border-2 shadow-md ${stockBadge.bg}`}>{stockBadge.text}</div>
+                    <div key={sg.id} className={`rounded-2xl md:rounded-3xl p-4 md:p-5 border-2 ${isDone ? 'bg-emerald-50 border-emerald-200' : isRejected ? 'bg-red-50 border-red-200' : 'bg-white border-indigo-100'}`}>
+                      <div className="flex items-start gap-3">
+                        <AnonymousAvatar size={40} tone={sg.from === 'الدعم' ? 'amber' : 'slate'} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-black text-slate-800 text-xs md:text-sm">{senderDisplay}</span>
+                            <span className="text-[10px] md:text-[11px] text-slate-400">{sg.timeString}</span>
+                          </div>
+                          <p className="text-sm md:text-base text-slate-700 mt-2 leading-relaxed whitespace-pre-wrap">{sg.text}</p>
+                          <div className="mt-2">
+                            {isDone && <span className="text-[10px] md:text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">✅ تم التوفير</span>}
+                            {isRejected && <span className="text-[10px] md:text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">❌ غير متاح حالياً</span>}
+                            {!isDone && !isRejected && <span className="text-[10px] md:text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">⏳ قيد المراجعة</span>}
+                          </div>
+                        </div>
                       </div>
-                      <span className="text-[9px] md:text-[10px] font-extrabold bg-slate-100 text-slate-600 px-1.5 md:px-2 py-0.5 rounded-md self-start">{p.category || 'عام'}</span>
-                      <h3 className="font-bold text-slate-800 text-[11px] md:text-sm mt-1 md:mt-1.5 line-clamp-2">{p.name}</h3>
-                      {p.desc && <p className="text-[10px] md:text-[11px] text-slate-500 mt-0.5 line-clamp-1">{p.desc}</p>}
-                      <div className="mt-2 md:mt-4 pt-2 md:pt-3 border-t border-slate-100 flex items-center justify-between gap-1">
-                        <span className="text-xs md:text-base font-black text-brand">{(Number(p.price)||0).toFixed(2)} <span className="text-[9px] md:text-xs">ر.س</span></span>
-                        <button onClick={()=>addToCart(p)} disabled={!storeStatus.isOpen || stock <= 0}
-                          className={`font-bold px-2 md:px-3 py-1.5 md:py-2 rounded-lg md:rounded-xl text-[10px] md:text-xs ${(!storeStatus.isOpen || stock <= 0) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'btn-brand'}`}>
-                          {stock <= 0 ? '❌' : '➕'}<span className="hidden md:inline">{stock <= 0 ? ' نفذت' : ' إضافة'}</span>
-                        </button>
-                      </div>
+                      {isAdmin && (
+                        <div className="mt-3 pt-3 border-t border-slate-200 grid grid-cols-3 gap-1.5">
+                          <button onClick={()=>handleUpdateSuggestionStatus(sg.id, 'done')} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-extrabold py-2 rounded-lg text-[10px] md:text-[11px]">✅ تم</button>
+                          <button onClick={()=>handleUpdateSuggestionStatus(sg.id, 'rejected')} className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-extrabold py-2 rounded-lg text-[10px] md:text-[11px]">❌ رفض</button>
+                          <button onClick={()=>handleDeleteSuggestion(sg.id)} className="bg-red-100 hover:bg-red-200 text-red-700 font-extrabold py-2 rounded-lg text-[10px] md:text-[11px]">🗑️ حذف</button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1396,7 +1631,7 @@ function GroceryApp() {
               </div>
               <div className={`text-[9px] md:text-[10px] font-black px-2 md:px-2.5 py-1 rounded-full shrink-0 ${botConfig.enabled?'bg-emerald-500/20 text-emerald-300':'bg-red-500/20 text-red-300'}`}>{botConfig.enabled ? '🔊' : '🔇'}</div>
             </div>
-            <div className="flex-1 p-3 md:p-4 overflow-y-auto space-y-3 md:space-y-4 bg-slate-50">
+            <div ref={chatContainerRef} className="flex-1 p-3 md:p-4 overflow-y-auto space-y-3 md:space-y-4 bg-slate-50">
               {loadingStates.chat ? (<Spinner text="جارٍ تحميل الرسائل..." />) : chatMessages.length === 0 ? (
                 <div className="text-center py-12 text-slate-400 text-xs">لا رسائل بعد</div>
               ) : chatMessages.map(msg => {
@@ -1560,6 +1795,38 @@ function GroceryApp() {
               </div>
             </AdminSection>
 
+            {/* ✅ v2.5.0: اقتراحات الإدارة */}
+            <AdminSection title="اقتراحات العملاء" icon="💡" badge={`${suggestions.length} (${newSuggestionsCount} جديد)`} defaultOpen={newSuggestionsCount > 0}>
+              {suggestions.length === 0 ? (<p className="text-xs text-slate-400 text-center py-4">لا اقتراحات بعد</p>) : (
+                <div className="space-y-2 md:space-y-3">
+                  {suggestions.map(sg => {
+                    const isDone = sg.status === 'done';
+                    const isRejected = sg.status === 'rejected';
+                    const senderDisplay = userAccounts[sg.from]?.displayName || sg.from;
+                    return (
+                      <div key={sg.id} className={`p-3 md:p-4 rounded-xl md:rounded-2xl border-2 ${isDone ? 'bg-emerald-50 border-emerald-200' : isRejected ? 'bg-red-50 border-red-200' : 'bg-indigo-50 border-indigo-200'}`}>
+                        <div className="flex items-start gap-2 md:gap-3">
+                          <AnonymousAvatar size={36} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <span className="font-black text-slate-800 text-xs md:text-sm">{senderDisplay}</span>
+                              <span className="text-[9px] md:text-[10px] text-slate-400">{sg.timeString}</span>
+                            </div>
+                            <p className="text-xs md:text-sm text-slate-700 mt-1.5 whitespace-pre-wrap">{sg.text}</p>
+                          </div>
+                        </div>
+                        <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t border-slate-200 grid grid-cols-3 gap-1.5 md:gap-2">
+                          <button onClick={()=>handleUpdateSuggestionStatus(sg.id, 'done')} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-extrabold py-1.5 md:py-2 rounded-lg text-[10px] md:text-[11px]">✅ تم</button>
+                          <button onClick={()=>handleUpdateSuggestionStatus(sg.id, 'rejected')} className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-extrabold py-1.5 md:py-2 rounded-lg text-[10px] md:text-[11px]">❌ رفض</button>
+                          <button onClick={()=>handleDeleteSuggestion(sg.id)} className="bg-red-100 hover:bg-red-200 text-red-700 font-extrabold py-1.5 md:py-2 rounded-lg text-[10px] md:text-[11px]">🗑️</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </AdminSection>
+
             <AdminSection title="إدارة المخزون" icon="📦" badge={`${products.length} منتج · ${lowStockProducts.length} منخفض`} defaultOpen={lowStockProducts.length > 0}>
               {products.length === 0 ? (<p className="text-xs text-slate-400 text-center py-4">لا منتجات</p>) : (
                 <>
@@ -1662,9 +1929,7 @@ function GroceryApp() {
               <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl flex flex-wrap items-center justify-between gap-2 md:gap-3 ${notifPermission==='granted'?'bg-emerald-50 border border-emerald-200':'bg-amber-50 border border-amber-200'}`}>
                 <div>
                   <div className="font-black text-xs md:text-sm">🔔 إشعارات المتصفح</div>
-                  <div className="text-[10px] md:text-[11px] text-slate-500 mt-0.5">
-                    {notifPermission==='granted'?'مفعّلة — تصلك حتى في الخلفية':notifPermission==='denied'?'ممنوعة — افتح إعدادات كروم':notifPermission==='unsupported'?'غير مدعومة':'غير مفعّلة'}
-                  </div>
+                  <div className="text-[10px] md:text-[11px] text-slate-500 mt-0.5">{notifPermission==='granted'?'مفعّلة':notifPermission==='denied'?'ممنوعة':notifPermission==='unsupported'?'غير مدعومة':'غير مفعّلة'}</div>
                 </div>
                 {notifPermission !== 'granted' && notifPermission !== 'unsupported' && (<button onClick={requestNotifPermission} className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-3 md:px-4 py-2 md:py-2.5 rounded-xl text-[11px] md:text-xs">🔔 تفعيل</button>)}
                 {notifPermission === 'granted' && (<button onClick={()=>showBrowserNotification('🔔 اختبار','الإشعارات تعمل!',{requireInteraction:false})} className="bg-white border border-emerald-300 text-emerald-700 font-black px-3 md:px-4 py-2 md:py-2.5 rounded-xl text-[11px] md:text-xs">🧪 اختبار</button>)}
@@ -1710,7 +1975,7 @@ function GroceryApp() {
               <button onClick={()=>setCategoriesModal(categories.map(c => ({ ...c })))} className="w-full bg-brand-light px-3 py-2.5 md:py-3 rounded-xl text-[11px] md:text-xs font-extrabold">✏️ تعديل</button>
             </AdminSection>
 
-            <AdminSection title="تقييمات العملاء" icon="⭐" badge={`${ratingsByUser.length}`}>
+            <AdminSection title="تقييمات الطلبات" icon="⭐" badge={`${ratingsByUser.length}`}>
               {ratingsByUser.map(r => (
                 <div key={r.name} className="bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-200">
                   <div className="flex items-center justify-between">
@@ -1738,7 +2003,7 @@ function GroceryApp() {
                   <div className="bg-white p-1.5 md:p-2 rounded border">storeChat: <b>{rawStats.chat}</b></div>
                   <div className="bg-white p-1.5 md:p-2 rounded border">storeOrders: <b>{rawStats.orders}</b></div>
                   <div className="bg-white p-1.5 md:p-2 rounded border">متصلون: <b>{onlineUsers.length}</b></div>
-                  <div className="bg-white p-1.5 md:p-2 rounded border col-span-2">حسابات محمية: <b>{Object.values(userAccounts).filter(a => a.password).length}</b> / {Object.keys(userAccounts).length}</div>
+                  <div className="bg-white p-1.5 md:p-2 rounded border col-span-2">اقتراحات: <b>{suggestions.length}</b> · تقييمات منتجات: <b>{Object.keys(productRatings).length}</b></div>
                 </div>
                 <div className="text-[10px] md:text-[11px] text-slate-500 mt-2">📌 v{APP_VERSION} · 🔔 {newOrderNotifications.length} · 💵 {debtRequests.length} · 📦 {products.length} · 💰 {totalFamilyDebt.toFixed(2)}</div>
               </div>
@@ -1802,13 +2067,97 @@ function GroceryApp() {
         )}
       </main>
 
-      {activeTab === 'products' && !cartDrawerOpen && (
-        <button onClick={()=>{ playSound('click'); setCartDrawerOpen(true); }}
-          className="floating-cart fixed bottom-4 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all">
+      {/* ✅ v2.5.0: السلة العائمة مع اهتزاز */}
+      {!cartDrawerOpen && (
+        <button id="floating-cart-btn" onClick={()=>{ playSound('click'); setCartDrawerOpen(true); }}
+          className={`floating-cart fixed bottom-4 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center text-white transition-all ${cartShake ? 'cart-shake' : 'hover:scale-110 active:scale-95'}`}>
           <span className="text-xl md:text-2xl">🛒</span>
           {cartCount > 0 && (<span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] md:text-xs font-black w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center border-2 border-white">{cartCount > 99 ? '99+' : cartCount}</span>)}
         </button>
       )}
+
+      {/* ✅ v2.5.0: تفاصيل المنتج */}
+      {productDetailsModal && (() => {
+        const p = productDetailsModal.product;
+        const imgSrc = imageMap[String(p.id)] || p.imageUrl || '';
+        const stock = Number(p.stock) || 0;
+        const rating = getProductRating(p.id);
+        return (
+          <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[85] flex items-center justify-center p-3 md:p-4" onClick={()=>setProductDetailsModal(null)}>
+            <div onClick={e=>e.stopPropagation()} className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+              <div className="flex items-center justify-between p-3 md:p-4 border-b border-slate-200">
+                <h3 className="font-black text-base md:text-lg">تفاصيل المنتج</h3>
+                <button onClick={()=>setProductDetailsModal(null)} className="text-slate-400 hover:text-slate-700 text-xl md:text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100">✕</button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+                <div className="bg-slate-50 rounded-2xl p-4 flex items-center justify-center border border-slate-100 h-64 md:h-80">
+                  {imgSrc ? (
+                    <img id={`details-img-${p.id}`} src={imgSrc} alt={p.name} className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <div className="text-8xl">{p.emoji || '🛒'}</div>
+                  )}
+                </div>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] md:text-xs font-extrabold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">{p.category || 'عام'}</span>
+                      <h2 className="font-black text-slate-900 text-lg md:text-2xl mt-1">{p.name}</h2>
+                    </div>
+                    <div className={`text-[11px] md:text-sm font-black px-3 py-1.5 rounded-xl ${stock <= 0 ? 'bg-red-100 text-red-700' : stock <= 3 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {stock <= 0 ? '❌ نفذت الكمية' : `📦 متوفر: ${stock}`}
+                    </div>
+                  </div>
+                  {p.desc && (<p className="text-sm md:text-base text-slate-600 leading-relaxed">{p.desc}</p>)}
+
+                  {/* التقييم */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <div className="text-[11px] md:text-xs text-slate-500 font-bold">تقييم المنتج</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <StarDisplay rating={rating.avg} size="text-xl md:text-2xl" />
+                          <span className="font-black text-slate-800 text-sm md:text-base">
+                            {rating.count > 0 ? rating.avg.toFixed(1) : 'جديد'}
+                          </span>
+                          {rating.count > 0 && <span className="text-xs text-slate-500">({rating.count} تقييم)</span>}
+                        </div>
+                      </div>
+                    </div>
+                    {currentChatUser && currentChatUser !== 'الدعم' && (
+                      <div className="pt-3 border-t border-amber-200">
+                        <div className="text-[11px] md:text-xs font-bold text-slate-600 mb-2">
+                          {rating.myRating > 0 ? `تقييمك الحالي: ${rating.myRating} ★ (اضغط للتغيير)` : 'قيّم هذا المنتج:'}
+                        </div>
+                        <StarDisplay rating={rating.myRating} size="text-3xl md:text-4xl" interactive onRate={(n)=>handleRateProduct(p.id, n)} />
+                      </div>
+                    )}
+                    {currentChatUser === 'الدعم' && (<div className="text-[11px] text-amber-800 font-bold pt-2 border-t border-amber-200">الإداري لا يقيم المنتجات</div>)}
+                    {!currentChatUser && (<div className="text-[11px] text-amber-800 font-bold pt-2 border-t border-amber-200">سجّل دخولك لتقييم المنتج</div>)}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-200">
+                    <span className="text-xs md:text-sm text-slate-500 font-bold">السعر:</span>
+                    <span className="text-2xl md:text-3xl font-black text-brand">{(Number(p.price)||0).toFixed(2)} <span className="text-sm">ر.س</span></span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 md:gap-3 pt-2">
+                    <button onClick={(e)=>addToCart(p, document.getElementById(`details-img-${p.id}`) || e.currentTarget)}
+                      disabled={!storeStatus.isOpen || stock <= 0}
+                      className={`font-black py-3 md:py-4 rounded-2xl text-sm md:text-base ${(!storeStatus.isOpen || stock <= 0) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-100 hover:bg-slate-200 text-slate-800 active:scale-95'} transition flex items-center justify-center gap-2`}>
+                      🛒 إضافة إلى السلة
+                    </button>
+                    <button onClick={(e)=>buyNow(p, document.getElementById(`details-img-${p.id}`) || e.currentTarget)}
+                      disabled={!storeStatus.isOpen || stock <= 0}
+                      className={`font-black py-3 md:py-4 rounded-2xl text-sm md:text-base ${(!storeStatus.isOpen || stock <= 0) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'btn-brand active:scale-95'} transition flex items-center justify-center gap-2`}>
+                      ⚡ شراء فوري
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {cartDrawerOpen && (
         <div className="fixed inset-0 z-[70] flex" onClick={()=>setCartDrawerOpen(false)}>
@@ -1911,7 +2260,6 @@ function GroceryApp() {
         </div>
       )}
 
-      {/* ✅ v2.4.1: لوحة الجرس (الإعلانات) */}
       {broadcastPanelOpen && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[106] flex items-center justify-center p-3 md:p-4" onClick={()=>setBroadcastPanelOpen(false)}>
           <div onClick={e=>e.stopPropagation()} className="bg-white rounded-3xl p-5 md:p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[85vh] overflow-hidden flex flex-col">
@@ -1921,10 +2269,7 @@ function GroceryApp() {
             </div>
             <div className="flex-1 overflow-y-auto space-y-2">
               {broadcasts.length === 0 ? (
-                <div className="text-center py-12 text-slate-400">
-                  <div className="text-5xl opacity-40 mb-2">📭</div>
-                  <p className="font-bold text-sm">لا إعلانات بعد</p>
-                </div>
+                <div className="text-center py-12 text-slate-400"><div className="text-5xl opacity-40 mb-2">📭</div><p className="font-bold text-sm">لا إعلانات بعد</p></div>
               ) : broadcasts.map(b => (
                 <div key={b.id} className="bg-gradient-to-l from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-3 md:p-4">
                   <div className="flex items-start gap-2 md:gap-3">
@@ -1941,6 +2286,29 @@ function GroceryApp() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ v2.5.0: نافذة اقتراح جديد */}
+      {suggestionModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[85] flex items-center justify-center p-3 md:p-4" onClick={()=>setSuggestionModalOpen(false)}>
+          <div onClick={e=>e.stopPropagation()} className="bg-white rounded-3xl p-5 md:p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2 md:pb-3">
+              <h3 className="font-black text-base md:text-lg flex items-center gap-2">💡 اقتراحك</h3>
+              <button onClick={()=>setSuggestionModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-xl md:text-2xl w-7 h-7 md:w-8 md:h-8 flex items-center justify-center rounded-full hover:bg-slate-100">✕</button>
+            </div>
+            <form onSubmit={handleSendSuggestion} className="space-y-3">
+              <div>
+                <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">✏️ اكتب اقتراحك:</label>
+                <textarea name="text" required rows="5" placeholder="مثال: أريد أن تتوفر شوكولاتة كيت كات بالحجم الكبير، أو أريد نوع جديد من العصائر..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none" />
+              </div>
+              <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 text-[10px] md:text-[11px] p-2.5 md:p-3 rounded-xl">💡 سيصل اقتراحك للإدارة مباشرة، شكراً لمساهمتك!</div>
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <button type="submit" className="btn-brand flex-1 font-extrabold py-3 rounded-xl text-xs">💡 إرسال الاقتراح</button>
+                <button type="button" onClick={()=>setSuggestionModalOpen(false)} className="bg-slate-100 font-bold px-4 py-3 rounded-xl text-xs">إلغاء</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2041,16 +2409,13 @@ function GroceryApp() {
         </div>
       )}
 
-      {/* ✅ v2.4.1: نافذة الهوية تنتظر التحميل */}
       {identityModalOpen && !passwordPrompt && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-3 md:p-4">
           <div className="bg-white rounded-3xl p-5 md:p-8 max-w-md w-full shadow-2xl space-y-4 md:space-y-5 text-center">
             <div className="mx-auto" style={{ width:60 }}><AnonymousAvatar size={60} /></div>
             <div>
               <h2 className="text-xl md:text-2xl font-black text-slate-900">من أنت؟</h2>
-              <p className="text-xs md:text-sm text-slate-500 mt-1">
-                {accountsLoaded ? 'سيتم تذكّر جهازك' : '⏳ جارٍ تحميل بيانات الحسابات...'}
-              </p>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">{accountsLoaded ? 'سيتم تذكّر جهازك' : '⏳ جارٍ تحميل بيانات الحسابات...'}</p>
             </div>
             {!accountsLoaded ? (
               <div className="flex flex-col items-center justify-center py-8 gap-3">
@@ -2087,13 +2452,7 @@ function GroceryApp() {
             <div className="text-4xl md:text-5xl">🔔</div>
             <div>
               <h2 className="text-xl md:text-2xl font-black text-slate-900">تفعيل الإشعارات؟</h2>
-              <p className="text-xs md:text-sm text-slate-500 mt-2 leading-relaxed">
-                نريد إرسال إشعارات لك عن:<br/>
-                • 📢 إعلانات المتجر<br/>
-                • 🎉 عروض جديدة<br/>
-                • ✅ حالة طلبك<br/>
-                <span className="text-[10px] md:text-[11px] text-slate-400 block mt-2">ستعمل حتى لو الموقع في الخلفية</span>
-              </p>
+              <p className="text-xs md:text-sm text-slate-500 mt-2 leading-relaxed">نريد إرسال إشعارات لك عن:<br/>• 📢 إعلانات المتجر<br/>• 🎉 عروض جديدة<br/>• ✅ حالة طلبك<br/><span className="text-[10px] md:text-[11px] text-slate-400 block mt-2">ستعمل حتى لو الموقع في الخلفية</span></p>
             </div>
             <div className="flex flex-col gap-2">
               <button onClick={requestNotifPermission} className="btn-brand w-full font-black py-3 rounded-xl text-xs md:text-sm">🔔 نعم، فعّل الإشعارات</button>
