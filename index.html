@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>بقالة أم محمد v2.5.0</title>
+<title>بقالة أم محمد v2.6.0</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
   tailwind.config = { darkMode:'class', theme:{ extend:{ fontFamily:{ cairo:['Cairo','sans-serif'] } } } }
@@ -65,7 +65,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo } = React;
 
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.6.0';
 const MOHAMMED_PHONE = '966505835077';
 
 const LS_KEYS = {
@@ -266,7 +266,6 @@ function ImageUploader({ value, onChange, label='اختر صورة', maxDimensio
   );
 }
 
-/* ✅ v2.5.0: عرض النجوم */
 function StarDisplay({ rating = 0, size = 'text-base', interactive = false, onRate = null }) {
   const stars = [1,2,3,4,5];
   return (
@@ -384,6 +383,221 @@ function DebtRequestNotification({ request, debtAmount, onSettle, onDismiss }) {
   );
 }
 
+/* ✅ v2.6.0: لعبة التوصيل - ديناصور ستايل */
+function DeliveryGame({ onClose, currentUser, updateStoreDataDoc, gameScores }) {
+  const canvasRef = useRef(null);
+  const [status, setStatus] = useState('ready');
+  const [score, setScore] = useState(0);
+  const [highScore, setHighScore] = useState(Number(gameScores[currentUser]) || 0);
+  const [newRecord, setNewRecord] = useState(false);
+  const highScoreRef = useRef(Number(gameScores[currentUser]) || 0);
+  const stateRef = useRef({ player:{ y:0, vy:0, jumping:false }, obstacles:[], score:0, speed:6, raf:null, frame:0, running:false });
+
+  const W = 600, H = 300, GROUND_Y = 250, PLAYER_W = 40, PLAYER_H = 50, PLAYER_X = 60;
+  const GRAVITY = 0.75, JUMP_V = -14;
+
+  useEffect(() => {
+    highScoreRef.current = Number(gameScores[currentUser]) || 0;
+    setHighScore(highScoreRef.current);
+  }, [gameScores, currentUser]);
+
+  const reset = () => {
+    const s = stateRef.current;
+    s.player = { y: GROUND_Y - PLAYER_H, vy: 0, jumping: false };
+    s.obstacles = [];
+    s.score = 0; s.speed = 6; s.frame = 0; s.running = false;
+    setScore(0);
+  };
+
+  const draw = (ctx) => {
+    const s = stateRef.current;
+    // خلفية
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#fef3c7'); g.addColorStop(1,'#fde68a');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+    // سحاب
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    for (let i = 0; i < 3; i++) {
+      const cx = (s.frame * 0.5 + i * 200) % (W + 100) - 50;
+      ctx.beginPath(); ctx.arc(cx, 60 + i*20, 20, 0, Math.PI*2); ctx.arc(cx+25, 60 + i*20, 25, 0, Math.PI*2); ctx.arc(cx+50, 60 + i*20, 20, 0, Math.PI*2); ctx.fill();
+    }
+    // أرض
+    ctx.fillStyle = '#d97706'; ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+    ctx.fillStyle = '#92400e'; ctx.fillRect(0, GROUND_Y, W, 4);
+    // خطوط الأرض
+    ctx.strokeStyle = 'rgba(146,64,14,0.4)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 10; i++) {
+      const lx = (i * 80 - s.frame * s.speed * 0.5) % (W + 80);
+      ctx.beginPath(); ctx.moveTo(lx, GROUND_Y + 15); ctx.lineTo(lx + 30, GROUND_Y + 15); ctx.stroke();
+    }
+    // مطبات
+    for (const ob of s.obstacles) {
+      ctx.fillStyle = '#78716c';
+      ctx.beginPath(); ctx.moveTo(ob.x, GROUND_Y); ctx.lineTo(ob.x + ob.w/2, GROUND_Y - ob.h); ctx.lineTo(ob.x + ob.w, GROUND_Y); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#44403c'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#a8a29e';
+      ctx.beginPath(); ctx.moveTo(ob.x + ob.w/2 - 4, GROUND_Y - ob.h + 8); ctx.lineTo(ob.x + ob.w/2, GROUND_Y - ob.h + 3); ctx.lineTo(ob.x + ob.w/2 + 4, GROUND_Y - ob.h + 8); ctx.closePath(); ctx.fill();
+    }
+    // اللاعب - رجل توصيل
+    const px = PLAYER_X, py = s.player.y;
+    // ظل
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath(); ctx.ellipse(px + 20, GROUND_Y + 2, 22, 5, 0, 0, Math.PI*2); ctx.fill();
+    // شنطة/صندوق أمامي
+    ctx.fillStyle = '#b45309'; ctx.fillRect(px + 20, py + 16, 22, 22);
+    ctx.strokeStyle = '#78350f'; ctx.lineWidth = 2; ctx.strokeRect(px + 20, py + 16, 22, 22);
+    ctx.beginPath(); ctx.moveTo(px + 31, py + 16); ctx.lineTo(px + 31, py + 38); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px + 20, py + 27); ctx.lineTo(px + 42, py + 27); ctx.stroke();
+    // جسم
+    ctx.fillStyle = '#2563eb'; ctx.fillRect(px + 8, py + 16, 18, 22);
+    // أرجل
+    ctx.fillStyle = '#1e3a8a';
+    const legOffset = s.player.jumping ? 0 : Math.sin(s.frame * 0.35) * 3;
+    ctx.fillRect(px + 8 + legOffset, py + 38, 6, 12);
+    ctx.fillRect(px + 20 - legOffset, py + 38, 6, 12);
+    // رأس
+    ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(px + 17, py + 10, 9, 0, Math.PI*2); ctx.fill();
+    // عيون
+    ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.arc(px + 19, py + 10, 2, 0, Math.PI*2); ctx.fill();
+    // قبعة
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath(); ctx.arc(px + 17, py + 6, 9, Math.PI, 0); ctx.fill();
+    ctx.fillRect(px + 17, py + 4, 12, 3);
+    // النقاط
+    ctx.fillStyle = '#0f172a'; ctx.font = 'bold 22px Cairo, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('النقاط: ' + Math.floor(s.score), 20, 34);
+    ctx.font = 'bold 15px Cairo, sans-serif'; ctx.fillStyle = '#92400e';
+    ctx.fillText('🏆 الأفضل: ' + highScoreRef.current, 20, 58);
+  };
+
+  const gameOver = async () => {
+    const s = stateRef.current;
+    s.running = false;
+    setStatus('over');
+    const finalScore = Math.floor(s.score);
+    setScore(finalScore);
+    if (finalScore > highScoreRef.current) {
+      setHighScore(finalScore);
+      highScoreRef.current = finalScore;
+      setNewRecord(true);
+      if (currentUser && updateStoreDataDoc) {
+        try {
+          const newScores = { ...gameScores, [currentUser]: finalScore };
+          await updateStoreDataDoc('gameScores', { scores: newScores });
+        } catch {}
+      }
+    }
+  };
+
+  const loop = () => {
+    const s = stateRef.current;
+    if (!s.running) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    if (s.player.jumping) {
+      s.player.vy += GRAVITY; s.player.y += s.player.vy;
+      if (s.player.y >= GROUND_Y - PLAYER_H) { s.player.y = GROUND_Y - PLAYER_H; s.player.vy = 0; s.player.jumping = false; }
+    }
+    for (const ob of s.obstacles) ob.x -= s.speed;
+    s.obstacles = s.obstacles.filter(o => o.x + o.w > -10);
+
+    s.frame++;
+    const lastOb = s.obstacles[s.obstacles.length - 1];
+    if (!lastOb || lastOb.x < W - 250) {
+      if (Math.random() < 0.022) {
+        s.obstacles.push({ x: W + 20, w: 22 + Math.random()*16, h: 26 + Math.random()*22 });
+      }
+    }
+
+    s.score += 0.2;
+    s.speed = 6 + Math.min(7, s.score / 200);
+    if (s.frame % 6 === 0) setScore(Math.floor(s.score));
+
+    const px = PLAYER_X, py = s.player.y, pw = PLAYER_W, ph = PLAYER_H;
+    for (const ob of s.obstacles) {
+      if (px < ob.x + ob.w && px + pw > ob.x && py + ph > GROUND_Y - ob.h && py < GROUND_Y) {
+        draw(ctx); gameOver(); return;
+      }
+    }
+
+    draw(ctx);
+    s.raf = requestAnimationFrame(loop);
+  };
+
+  const start = () => {
+    reset();
+    setNewRecord(false);
+    setStatus('playing');
+    stateRef.current.running = true;
+    if (stateRef.current.raf) cancelAnimationFrame(stateRef.current.raf);
+    stateRef.current.raf = requestAnimationFrame(loop);
+  };
+
+  const jump = () => {
+    if (status === 'ready' || status === 'over') { start(); return; }
+    const s = stateRef.current;
+    if (!s.player.jumping) { s.player.vy = JUMP_V; s.player.jumping = true; playSound('click'); }
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = W; canvas.height = H;
+    reset();
+    draw(canvas.getContext('2d'));
+    return () => { if (stateRef.current.raf) cancelAnimationFrame(stateRef.current.raf); };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+        e.preventDefault();
+        jump();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [status]);
+
+  return (
+    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[140] flex items-center justify-center p-3 md:p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-white rounded-3xl p-3 md:p-5 max-w-3xl w-full shadow-2xl space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <h3 className="font-black text-base md:text-lg flex items-center gap-2">🚚 توصيل أم محمد</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl md:text-2xl w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100">✕</button>
+        </div>
+        <div className="relative rounded-2xl overflow-hidden border-2 border-amber-300 bg-amber-50">
+          <canvas ref={canvasRef} className="w-full block cursor-pointer" style={{ touchAction: 'none', maxHeight: '60vh' }} onClick={jump} />
+          {status === 'ready' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/60 text-white text-center p-4">
+              <div className="text-5xl mb-2">🚚</div>
+              <h4 className="font-black text-lg md:text-xl mb-1">لعبة التوصيل</h4>
+              <p className="text-xs md:text-sm mb-3 opacity-90">اضغط على الشاشة / مسافة / ↑ للنط فوق المطبات</p>
+              <button onClick={start} className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-6 py-2.5 rounded-xl text-sm shadow-lg">▶️ ابدأ اللعب</button>
+            </div>
+          )}
+          {status === 'over' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-white text-center p-4">
+              <div className="text-5xl mb-1">💥</div>
+              <h4 className="font-black text-lg md:text-xl">انتهت الجولة!</h4>
+              <p className="text-sm mt-2">النقاط: <b className="text-amber-400 text-lg">{score}</b></p>
+              <p className="text-xs mt-1">أفضل نتيجة لك: <b className="text-amber-300">{highScore}</b></p>
+              {newRecord && <p className="text-xs md:text-sm text-emerald-400 font-black mt-1.5">🎉 رقم قياسي جديد!</p>}
+              <button onClick={start} className="mt-4 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-6 py-2.5 rounded-xl text-sm shadow-lg">🔄 العب مجدداً</button>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-2 text-xs md:text-sm flex-wrap">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 font-black text-amber-800">🏆 أفضل نتيجة: {highScore}</div>
+          {currentUser && <div className="bg-slate-100 text-slate-700 rounded-xl px-3 py-1.5 font-bold">👤 {currentUser}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GroceryApp() {
   const [currentChatUser, setCurrentChatUser] = useState(() => { try { return localStorage.getItem(LS_KEYS.DEVICE_USER) || ''; } catch { return ''; } });
   const [identityModalOpen, setIdentityModalOpen] = useState(() => { try { return !localStorage.getItem(LS_KEYS.DEVICE_USER); } catch { return true; } });
@@ -409,10 +623,10 @@ function GroceryApp() {
   const [debtRequests, setDebtRequests] = useState([]);
   const [broadcasts, setBroadcasts] = useState([]);
 
-  /* ✅ v2.5.0: تقييمات المنتجات + الاقتراحات + قراءة الدردشة */
-  const [productRatings, setProductRatings] = useState({}); // { productId: { userName: rating } }
+  const [productRatings, setProductRatings] = useState({});
   const [suggestions, setSuggestions] = useState([]);
-  const [userChatRead, setUserChatRead] = useState({}); // { userName: lastTimestamp }
+  const [userChatRead, setUserChatRead] = useState({});
+  const [gameScores, setGameScores] = useState({});
 
   const [userAccounts, setUserAccounts] = useState({});
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -420,13 +634,15 @@ function GroceryApp() {
   const [settingsModal, setSettingsModal] = useState(null);
   const [passwordPrompt, setPasswordPrompt] = useState(null);
   const [broadcastPanelOpen, setBroadcastPanelOpen] = useState(false);
-  /* ✅ v2.5.0: تفاصيل المنتج */
   const [productDetailsModal, setProductDetailsModal] = useState(null);
-  /* ✅ v2.5.0: نافذة اقتراح */
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false);
+  const [gameModalOpen, setGameModalOpen] = useState(false);
 
   const [adminPin, setAdminPin] = useState('3421');
   const [pinChangeModal, setPinChangeModal] = useState(null);
+  const [authScreen, setAuthScreen] = useState('login');
+  const [loginForm, setLoginForm] = useState({ username: '', password: '', error: '' });
+  const [registerForm, setRegisterForm] = useState({ username: '', password: '', confirmPassword: '', error: '' });
 
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [sessionId] = useState(() => 's_' + Math.random().toString(36).slice(2) + '_' + Date.now());
@@ -463,7 +679,6 @@ function GroceryApp() {
   const [ratingModal, setRatingModal] = useState(null);
   const [customerToast, setCustomerToast] = useState(null);
   const [debtDetailsOpen, setDebtDetailsOpen] = useState(false);
-  /* ✅ v2.5.0: اهتزاز السلة */
   const [cartShake, setCartShake] = useState(false);
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
@@ -488,7 +703,6 @@ function GroceryApp() {
     return true;
   }), [orders, dismissedNotifs]);
 
-  /* ✅ v2.5.0: قراءة الدردشة لكل مستخدم من السحابة */
   const myLastChatSeen = useMemo(() => {
     if (!currentChatUser) return 0;
     return userChatRead[currentChatUser] || 0;
@@ -503,7 +717,6 @@ function GroceryApp() {
     }).length;
   }, [chatMessages, myLastChatSeen, activeTab, currentChatUser]);
 
-  /* ✅ v2.5.0: عدد اقتراحات جديدة للإداري */
   const newSuggestionsCount = useMemo(() => {
     if (!isAdminAuthenticated) return 0;
     return suggestions.filter(s => s.status === 'pending').length;
@@ -513,7 +726,6 @@ function GroceryApp() {
   const lowStockProducts = useMemo(() => products.filter(p => (Number(p.stock)||0) <= 3), [products]);
   const visibleLowStockAlerts = useMemo(() => lowStockProducts.filter(p => !dismissedLowStock.includes(p.id)), [lowStockProducts, dismissedLowStock]);
 
-  /* ✅ v2.5.0: تحديث قراءة الدردشة عند فتحها */
   useEffect(() => {
     if (activeTab === 'chat' && chatMessages.length > 0 && currentChatUser) {
       const maxTs = Math.max(...chatMessages.map(m => (m.timestamp?.seconds||0)*1000));
@@ -527,7 +739,6 @@ function GroceryApp() {
     }
   }, [activeTab, chatMessages, currentChatUser]);
 
-  /* ✅ v2.5.0: التمرير لأسفل الدردشة فوراً عند الدخول */
   useEffect(() => {
     if (activeTab === 'chat') {
       setTimeout(() => {
@@ -685,13 +896,14 @@ function GroceryApp() {
           const pinDoc = allDocs.find(d => d._id==='adminPinConfig'); if (pinDoc && pinDoc.pin) setAdminPin(pinDoc.pin);
           const ua = allDocs.find(d => d._id==='userAccounts');
           if (ua && ua.accounts && typeof ua.accounts === 'object') setUserAccounts(ua.accounts);
-          /* ✅ v2.5.0 */
           const prt = allDocs.find(d => d._id==='productRatings');
           if (prt && prt.data && typeof prt.data === 'object') setProductRatings(prt.data);
           const sg = allDocs.find(d => d._id==='suggestions');
           if (sg && Array.isArray(sg.list)) setSuggestions(sg.list);
           const ucr = allDocs.find(d => d._id==='userChatRead');
           if (ucr && ucr.map && typeof ucr.map === 'object') setUserChatRead(ucr.map);
+          const gs = allDocs.find(d => d._id==='gameScores');
+          if (gs && gs.scores && typeof gs.scores === 'object') setGameScores(gs.scores);
           setAccountsLoaded(true);
           const dr = allDocs.find(d => d._id==='debtPaymentRequests'); if (dr && Array.isArray(dr.list)) setDebtRequests(dr.list);
           const br = allDocs.find(d => d._id==='broadcastNotifications'); if (br && Array.isArray(br.list)) setBroadcasts([...br.list].sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)).slice(0, 20));
@@ -769,7 +981,6 @@ function GroceryApp() {
     return acc?.displayName || currentChatUser;
   }, [currentChatUser, userAccounts]);
 
-  /* ✅ v2.5.0: حساب متوسط تقييم المنتج */
   const getProductRating = (productId) => {
     const ratings = productRatings[String(productId)] || {};
     const values = Object.values(ratings).filter(v => typeof v === 'number' && v > 0);
@@ -832,7 +1043,6 @@ function GroceryApp() {
     await updateStoreDataDoc('userAccounts', { accounts: newAccounts });
   };
 
-  /* ✅ v2.5.0: تقييم منتج */
   const handleRateProduct = async (productId, rating) => {
     if (!currentChatUser) return;
     if (currentChatUser === 'الدعم') { setNotificationModal({ title:'⚠️', message:'الإداري لا يقيم المنتجات.' }); return; }
@@ -846,7 +1056,6 @@ function GroceryApp() {
     catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
 
-  /* ✅ v2.5.0: إرسال اقتراح */
   const handleSendSuggestion = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -884,7 +1093,6 @@ function GroceryApp() {
     catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
   };
 
-  /* ✅ v2.5.0: أنيميشن الطيران للسلة */
   const flyToCart = (sourceEl, imageUrl, emoji) => {
     const cartBtn = document.getElementById('floating-cart-btn');
     if (!cartBtn || !sourceEl) return;
@@ -976,6 +1184,9 @@ function GroceryApp() {
     if (dbInstance) { try { const { doc, deleteDoc } = window.FirebaseSDK; deleteDoc(doc(dbInstance, COL.PRESENCE, sessionId)).catch(()=>{}); } catch {} }
     try { localStorage.removeItem(LS_KEYS.DEVICE_USER); localStorage.removeItem(LS_KEYS.ADMIN_TOKEN); } catch {}
     setCurrentChatUser(''); setIsAdminAuthenticated(false); setIdentityModalOpen(true); setActiveTab('products'); setSettingsModal(null);
+    setAuthScreen('login');
+    setLoginForm({ username: '', password: '', error: '' });
+    setRegisterForm({ username: '', password: '', confirmPassword: '', error: '' });
   };
   const handleSaveAccountSettings = async () => {
     if (!settingsModal || !currentChatUser) return;
@@ -993,6 +1204,115 @@ function GroceryApp() {
       playSound('cash'); setSettingsModal(null);
       setNotificationModal({ title:'✅ تم الحفظ', message:'تم حفظ إعدادات حسابك بنجاح.' });
     } catch (err) { setNotificationModal({ title:'❌ فشل', message: err.message }); }
+  };
+
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    const username = loginForm.username.trim();
+    const password = loginForm.password;
+
+    if (!username) { setLoginForm(f => ({ ...f, error: 'أدخل اسم المستخدم' })); return; }
+    if (!password) { setLoginForm(f => ({ ...f, error: 'أدخل كلمة المرور' })); return; }
+
+    if (username === 'الدعم') {
+      if (password === adminPin) {
+        playSound('cash');
+        setCurrentChatUser('الدعم');
+        setIsAdminAuthenticated(true);
+        setIdentityModalOpen(false);
+        setActiveTab('admin');
+        setLoginForm({ username: '', password: '', error: '' });
+        try {
+          localStorage.setItem(LS_KEYS.DEVICE_USER, 'الدعم');
+          localStorage.setItem(LS_KEYS.ADMIN_TOKEN, JSON.stringify({ createdAt: Date.now(), expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000 }));
+        } catch {}
+        setNotificationModal({ title: '👑 مرحباً', message: 'تم الدخول كإداري.' });
+      } else {
+        playSound('click');
+        setLoginForm(f => ({ ...f, error: 'كلمة المرور غير صحيحة' }));
+      }
+      return;
+    }
+
+    const acc = userAccounts[username];
+    if (!acc) {
+      playSound('click');
+      setLoginForm(f => ({ ...f, error: 'الحساب غير موجود — أنشئ حساباً جديداً' }));
+      return;
+    }
+    if (acc.password && acc.password !== password) {
+      playSound('click');
+      setLoginForm(f => ({ ...f, error: 'كلمة المرور غير صحيحة' }));
+      return;
+    }
+
+    playSound('cash');
+    setCurrentChatUser(username);
+    setIsAdminAuthenticated(false);
+    setIdentityModalOpen(false);
+    setActiveTab('products');
+    setLoginForm({ username: '', password: '', error: '' });
+    try { localStorage.setItem(LS_KEYS.DEVICE_USER, username); } catch {}
+  };
+
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    const username = registerForm.username.trim();
+    const password = registerForm.password;
+    const confirm = registerForm.confirmPassword;
+
+    if (!username) { setRegisterForm(f => ({ ...f, error: 'أدخل الاسم' })); return; }
+    if (username === 'الدعم') { setRegisterForm(f => ({ ...f, error: 'هذا الاسم محجوز للإدارة' })); return; }
+    if (username.length < 2) { setRegisterForm(f => ({ ...f, error: 'الاسم قصير جداً' })); return; }
+    if (!password || password.length < 4) { setRegisterForm(f => ({ ...f, error: 'كلمة المرور 4 أحرف على الأقل' })); return; }
+    if (password !== confirm) { setRegisterForm(f => ({ ...f, error: 'كلمتا المرور غير متطابقتين' })); return; }
+    if (userAccounts[username]) { setRegisterForm(f => ({ ...f, error: 'هذا الاسم مستخدم بالفعل — جرّب اسماً آخر أو سجّل دخولك' })); return; }
+    if (!dbInstance) { setRegisterForm(f => ({ ...f, error: 'غير متصل بالسحابة' })); return; }
+
+    try {
+      playSound('cash');
+      await saveUserAccount(username, { displayName: username, password });
+      setCurrentChatUser(username);
+      setIsAdminAuthenticated(false);
+      setIdentityModalOpen(false);
+      setActiveTab('products');
+      setRegisterForm({ username: '', password: '', confirmPassword: '', error: '' });
+      try { localStorage.setItem(LS_KEYS.DEVICE_USER, username); } catch {}
+      setNotificationModal({ title: '🎉 مرحباً بك!', message: `تم إنشاء حسابك (${username}) بنجاح.` });
+    } catch (err) {
+      setRegisterForm(f => ({ ...f, error: 'فشل: ' + err.message }));
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!currentChatUser || currentChatUser === 'الدعم') return;
+    const debt = Number(debtsMap[currentChatUser]) || 0;
+    if (debt > 0) {
+      setNotificationModal({
+        title: '⛔ لا يمكن حذف الحساب',
+        message: `عليك دين بقيمة ${debt.toFixed(2)} ر.س. سدده أولاً ثم حاول مجدداً.`
+      });
+      return;
+    }
+    if (!confirm(`⚠️ هل أنت متأكد من حذف حسابك (${currentChatUser}) نهائياً؟\nلا يمكن التراجع عن هذه العملية.`)) return;
+
+    try {
+      playSound('click');
+      const newAccounts = { ...userAccounts };
+      delete newAccounts[currentChatUser];
+      await updateStoreDataDoc('userAccounts', { accounts: newAccounts });
+      playSound('cash');
+      try { localStorage.removeItem(LS_KEYS.DEVICE_USER); localStorage.removeItem(LS_KEYS.ADMIN_TOKEN); } catch {}
+      setSettingsModal(null);
+      setCurrentChatUser('');
+      setIsAdminAuthenticated(false);
+      setActiveTab('products');
+      setAuthScreen('login');
+      setIdentityModalOpen(true);
+      setNotificationModal({ title: '✅ تم الحذف', message: 'تم حذف حسابك بنجاح.' });
+    } catch (err) {
+      setNotificationModal({ title: '❌ فشل الحذف', message: err.message });
+    }
   };
 
   const handleChangePin = async () => {
@@ -1177,7 +1497,6 @@ function GroceryApp() {
   };
   const handleDeleteChatMessage = async (docId) => { playSound('click'); try { await deleteChatDoc(docId); } catch(e){} };
 
-  /* ✅ v2.5.0: addToCart مع أنيميشن */
   const addToCart = (product, sourceEl = null) => {
     const stock = Number(product.stock) || 0;
     if (stock <= 0) { setNotificationModal({ title:'❌ نفذت الكمية', message:`(${product.name}) غير متوفر حالياً.` }); return; }
@@ -1197,7 +1516,6 @@ function GroceryApp() {
     else { setCartShake(true); setTimeout(() => setCartShake(false), 500); }
   };
 
-  /* ✅ v2.5.0: شراء فوري */
   const buyNow = (product, sourceEl = null) => {
     const stock = Number(product.stock) || 0;
     if (stock <= 0) { setNotificationModal({ title:'❌ نفذت الكمية', message:`(${product.name}) غير متوفر حالياً.` }); return; }
@@ -1292,7 +1610,6 @@ function GroceryApp() {
     setBroadcastsSeen(newestTs);
   };
 
-  /* ✅ v2.5.0: عرض تفاصيل المنتج */
   const openProductDetails = (product) => {
     playSound('click');
     setProductDetailsModal({ product });
@@ -1320,7 +1637,6 @@ function GroceryApp() {
           <span className="text-[9px] md:text-[10px] font-extrabold bg-slate-100 text-slate-600 px-1.5 md:px-2 py-0.5 rounded-md self-start inline-block">{p.category || 'عام'}</span>
           <h3 className="font-bold text-slate-800 text-[11px] md:text-sm mt-1 md:mt-1.5 line-clamp-2">{p.name}</h3>
         </button>
-        {/* ✅ التقييم */}
         <div className="flex items-center gap-1 mt-1">
           <StarDisplay rating={rating.avg} size="text-[10px] md:text-sm" />
           <span className="text-[9px] md:text-[10px] text-slate-500 font-bold">
@@ -1415,11 +1731,10 @@ function GroceryApp() {
                     )}
                   </button>
                 )}
-                <div className="bg-black/20 backdrop-blur-sm border border-white/20 px-1.5 py-1 rounded-xl flex items-center gap-1">
-                  <select value={currentChatUser} onChange={e=>handleUserChange(e.target.value)}
-                    className="bg-white/20 text-white font-extrabold text-[11px] px-2 py-1 rounded-lg border border-white/30 focus:outline-none cursor-pointer max-w-[80px]">
-                    {ALL_CHAT_USERS.map(u => <option key={u} value={u} className="text-slate-900">{u === 'الدعم' ? '👑 دعم' : u}</option>)}
-                  </select>
+                <div className="bg-black/20 backdrop-blur-sm border border-white/20 px-2 py-1 rounded-xl flex items-center gap-1">
+                  <span className="text-white font-extrabold text-[11px] px-1 max-w-[90px] truncate">
+                    {isAdmin ? '👑 الدعم' : myDisplayName}
+                  </span>
                   {currentChatUser && (
                     <button onClick={()=>{ playSound('click'); setSettingsModal({ displayName: myDisplayName, newPassword:'', confirmPassword:'', currentPassword:'', removePassword:false }); }} title="إعدادات" className="text-white/90 hover:text-white text-sm w-5 h-5 flex items-center justify-center rounded-full hover:bg-white/10">⚙️</button>
                   )}
@@ -1448,11 +1763,8 @@ function GroceryApp() {
                 </button>
               )}
               <div className="bg-black/20 backdrop-blur-sm border border-white/20 px-3.5 py-1.5 rounded-2xl flex items-center gap-2">
-                <span className="text-xs font-black text-amber-300">👤 أنت:</span>
-                <select value={currentChatUser} onChange={e=>handleUserChange(e.target.value)}
-                  className="bg-white/20 text-white font-extrabold text-sm px-3 py-1 rounded-xl border border-white/30 focus:outline-none cursor-pointer">
-                  {ALL_CHAT_USERS.map(u => <option key={u} value={u} className="text-slate-900">{u === 'الدعم' ? '👑 الدعم' : u}</option>)}
-                </select>
+                <span className="text-xs font-black text-amber-300">👤</span>
+                <span className="text-sm font-extrabold text-white max-w-[140px] truncate">{isAdmin ? 'الدعم 👑' : myDisplayName}</span>
                 {currentChatUser && (
                   <button onClick={()=>{ playSound('click'); setSettingsModal({ displayName: myDisplayName, newPassword:'', confirmPassword:'', currentPassword:'', removePassword:false }); }} title="إعدادات حسابي" className="text-white/90 hover:text-white text-lg w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/15 transition">⚙️</button>
                 )}
@@ -1551,7 +1863,6 @@ function GroceryApp() {
           </div>
         )}
 
-        {/* ✅ v2.5.0: تبويب الاقتراحات */}
         {activeTab === 'suggestions' && (
           <div className="space-y-3 md:space-y-4">
             <div className="bg-gradient-to-l from-indigo-600 via-purple-600 to-pink-600 text-white rounded-2xl md:rounded-3xl p-5 md:p-6 shadow-md">
@@ -1759,7 +2070,49 @@ function GroceryApp() {
               </div>
             </div>
 
-            <AdminSection title="المتصلون الآن" icon="👥" badge={`${onlineUsers.length} متصل`} defaultOpen={true}>
+            <AdminSection title="حسابات المستخدمين" icon="👥" badge={`${Object.keys(userAccounts).length} حساب`} defaultOpen={true}>
+              {Object.keys(userAccounts).length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-4">لا حسابات مسجلة بعد</p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[10px] md:text-[11px] text-amber-800 font-bold text-center">🔒 هذه المعلومات سرية — لا تشاركها مع أحد</div>
+                  {Object.entries(userAccounts).map(([name, acc]) => (
+                    <div key={name} className="bg-slate-50 p-3 rounded-xl border-2 border-slate-200 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <AnonymousAvatar size={36} />
+                        <div className="min-w-0">
+                          <div className="font-black text-slate-800 text-xs md:text-sm truncate">{acc.displayName || name}</div>
+                          <div className="text-[10px] text-slate-500 font-bold">اسم الدخول: <span className="font-mono text-slate-700">{name}</span></div>
+                        </div>
+                      </div>
+                      <div className="bg-white border-2 border-emerald-200 rounded-lg px-3 py-1.5 font-mono text-xs font-black text-emerald-700">
+                        🔑 {acc.password && acc.password.length > 0 ? acc.password : <span className="text-slate-400 italic font-sans text-[10px]">بدون كلمة مرور</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </AdminSection>
+
+            <AdminSection title="نتائج لعبة التوصيل" icon="🚚" badge={`${Object.keys(gameScores).length} لاعب`} defaultOpen={false}>
+              {Object.keys(gameScores).length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-4">لا نتائج بعد</p>
+              ) : (
+                <div className="space-y-2">
+                  {Object.entries(gameScores).sort((a,b) => b[1] - a[1]).map(([name, score], i) => (
+                    <div key={name} className={`p-3 rounded-xl flex items-center justify-between text-xs md:text-sm ${i === 0 ? 'bg-gradient-to-l from-amber-100 to-yellow-50 border-2 border-amber-300' : 'bg-slate-50 border border-slate-200'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-base font-black ${i === 0 ? 'text-amber-600' : i === 1 ? 'text-slate-500' : i === 2 ? 'text-orange-600' : 'text-slate-400'}`}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span>
+                        <span className="font-black text-slate-800">{userAccounts[name]?.displayName || name}</span>
+                      </div>
+                      <span className="font-black text-amber-600">🏆 {score}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </AdminSection>
+
+            <AdminSection title="المتصلون الآن" icon="👥" badge={`${onlineUsers.length} متصل`} defaultOpen={false}>
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl md:rounded-2xl p-3 flex items-center justify-between">
                 <div className="flex items-center gap-2"><span className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></span><span className="font-black text-emerald-800 text-xs md:text-sm">العدد الحالي:</span></div>
                 <span className="text-xl md:text-2xl font-black text-emerald-700">{onlineUsers.length}</span>
@@ -1795,7 +2148,6 @@ function GroceryApp() {
               </div>
             </AdminSection>
 
-            {/* ✅ v2.5.0: اقتراحات الإدارة */}
             <AdminSection title="اقتراحات العملاء" icon="💡" badge={`${suggestions.length} (${newSuggestionsCount} جديد)`} defaultOpen={newSuggestionsCount > 0}>
               {suggestions.length === 0 ? (<p className="text-xs text-slate-400 text-center py-4">لا اقتراحات بعد</p>) : (
                 <div className="space-y-2 md:space-y-3">
@@ -2004,6 +2356,7 @@ function GroceryApp() {
                   <div className="bg-white p-1.5 md:p-2 rounded border">storeOrders: <b>{rawStats.orders}</b></div>
                   <div className="bg-white p-1.5 md:p-2 rounded border">متصلون: <b>{onlineUsers.length}</b></div>
                   <div className="bg-white p-1.5 md:p-2 rounded border col-span-2">اقتراحات: <b>{suggestions.length}</b> · تقييمات منتجات: <b>{Object.keys(productRatings).length}</b></div>
+                  <div className="bg-white p-1.5 md:p-2 rounded border col-span-2">حسابات: <b>{Object.keys(userAccounts).length}</b> · لعبة: <b>{Object.keys(gameScores).length} لاعب</b></div>
                 </div>
                 <div className="text-[10px] md:text-[11px] text-slate-500 mt-2">📌 v{APP_VERSION} · 🔔 {newOrderNotifications.length} · 💵 {debtRequests.length} · 📦 {products.length} · 💰 {totalFamilyDebt.toFixed(2)}</div>
               </div>
@@ -2067,7 +2420,24 @@ function GroceryApp() {
         )}
       </main>
 
-      {/* ✅ v2.5.0: السلة العائمة مع اهتزاز */}
+      {/* ✅ v2.6.0: زر لعبة التوصيل - فوق سلة التسوق */}
+      <button onClick={() => { playSound('click'); setGameModalOpen(true); }}
+        className="fixed bottom-24 right-4 md:bottom-28 md:right-6 z-40 w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all border-2 border-white"
+        title="لعبة التوصيل">
+        <svg viewBox="0 0 64 64" className="w-10 h-10 md:w-12 md:h-12">
+          <path d="M 16 22 Q 32 13 48 22 L 48 26 L 16 26 Z" fill="#dc2626" />
+          <rect x="44" y="21" width="9" height="3" rx="1" fill="#991b1b" />
+          <circle cx="32" cy="31" r="7" fill="#fde68a" />
+          <circle cx="34" cy="30" r="1.2" fill="#1e293b" />
+          <rect x="24" y="37" width="14" height="14" rx="2" fill="#2563eb" />
+          <rect x="37" y="38" width="14" height="14" rx="1" fill="#b45309" stroke="#78350f" strokeWidth="1" />
+          <line x1="44" y1="38" x2="44" y2="52" stroke="#78350f" strokeWidth="1.2" />
+          <line x1="37" y1="45" x2="51" y2="45" stroke="#78350f" strokeWidth="1.2" />
+          <rect x="26" y="51" width="4" height="8" fill="#1e3a8a" />
+          <rect x="33" y="51" width="4" height="8" fill="#1e3a8a" />
+        </svg>
+      </button>
+
       {!cartDrawerOpen && (
         <button id="floating-cart-btn" onClick={()=>{ playSound('click'); setCartDrawerOpen(true); }}
           className={`floating-cart fixed bottom-4 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl flex items-center justify-center text-white transition-all ${cartShake ? 'cart-shake' : 'hover:scale-110 active:scale-95'}`}>
@@ -2076,7 +2446,15 @@ function GroceryApp() {
         </button>
       )}
 
-      {/* ✅ v2.5.0: تفاصيل المنتج */}
+      {gameModalOpen && (
+        <DeliveryGame
+          onClose={() => setGameModalOpen(false)}
+          currentUser={currentChatUser}
+          updateStoreDataDoc={updateStoreDataDoc}
+          gameScores={gameScores}
+        />
+      )}
+
       {productDetailsModal && (() => {
         const p = productDetailsModal.product;
         const imgSrc = imageMap[String(p.id)] || p.imageUrl || '';
@@ -2109,7 +2487,6 @@ function GroceryApp() {
                   </div>
                   {p.desc && (<p className="text-sm md:text-base text-slate-600 leading-relaxed">{p.desc}</p>)}
 
-                  {/* التقييم */}
                   <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div>
@@ -2290,7 +2667,6 @@ function GroceryApp() {
         </div>
       )}
 
-      {/* ✅ v2.5.0: نافذة اقتراح جديد */}
       {suggestionModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[85] flex items-center justify-center p-3 md:p-4" onClick={()=>setSuggestionModalOpen(false)}>
           <div onClick={e=>e.stopPropagation()} className="bg-white rounded-3xl p-5 md:p-6 max-w-md w-full shadow-2xl space-y-4">
@@ -2326,6 +2702,9 @@ function GroceryApp() {
                 <div className="text-[9px] md:text-[10px] text-slate-500 font-bold">الحساب الحالي</div>
                 <div className="font-black text-slate-900 text-sm md:text-base truncate">{currentChatUser === 'الدعم' ? '👑 الدعم الفني' : currentChatUser}</div>
                 {userAccounts[currentChatUser]?.password && (<div className="text-[9px] md:text-[10px] text-emerald-600 font-bold">🔒 محمي بكلمة مرور</div>)}
+                {currentUser && gameScores[currentUser] > 0 && (
+                  <div className="text-[9px] md:text-[10px] text-amber-600 font-bold mt-0.5">🏆 أفضل نتيجة باللعبة: {gameScores[currentUser]}</div>
+                )}
               </div>
             </div>
             {currentChatUser !== 'الدعم' && (
@@ -2385,6 +2764,16 @@ function GroceryApp() {
               <button onClick={handleSaveAccountSettings} className="btn-brand flex-1 font-extrabold py-3 rounded-xl text-xs">💾 حفظ الإعدادات</button>
               <button onClick={handleLogout} className="bg-red-100 hover:bg-red-200 text-red-700 font-extrabold px-4 py-3 rounded-xl text-xs">🚪 خروج</button>
             </div>
+            {currentChatUser && currentChatUser !== 'الدعم' && (
+              <div className="border-t-2 border-red-200 pt-3 mt-1">
+                <div className="text-[10px] md:text-[11px] text-red-500 font-bold mb-2 text-center">⚠️ منطقة الخطر</div>
+                <button type="button" onClick={handleDeleteAccount}
+                  className="w-full bg-red-50 hover:bg-red-100 border-2 border-red-200 text-red-700 font-extrabold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5">
+                  🗑️ حذف الحساب نهائياً
+                </button>
+                <p className="text-[9px] md:text-[10px] text-slate-400 mt-1.5 text-center">لا يمكن الحذف إذا كان عليك دين مستحق</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2409,38 +2798,104 @@ function GroceryApp() {
         </div>
       )}
 
-      {identityModalOpen && !passwordPrompt && (
+      {identityModalOpen && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-3 md:p-4">
-          <div className="bg-white rounded-3xl p-5 md:p-8 max-w-md w-full shadow-2xl space-y-4 md:space-y-5 text-center">
-            <div className="mx-auto" style={{ width:60 }}><AnonymousAvatar size={60} /></div>
-            <div>
-              <h2 className="text-xl md:text-2xl font-black text-slate-900">من أنت؟</h2>
-              <p className="text-xs md:text-sm text-slate-500 mt-1">{accountsLoaded ? 'سيتم تذكّر جهازك' : '⏳ جارٍ تحميل بيانات الحسابات...'}</p>
+          <div className="bg-white rounded-3xl p-5 md:p-8 max-w-md w-full shadow-2xl space-y-4 md:space-y-5">
+            <div className="text-center">
+              <div className="mx-auto" style={{ width: 60 }}><AnonymousAvatar size={60} /></div>
+              <h2 className="text-xl md:text-2xl font-black text-slate-900 mt-3">بقالة أم محمد</h2>
+              <p className="text-xs md:text-sm text-slate-500 mt-1">سجّل دخولك أو أنشئ حساباً جديداً</p>
             </div>
+
             {!accountsLoaded ? (
               <div className="flex flex-col items-center justify-center py-8 gap-3">
                 <div className="relative w-12 h-12">
                   <div className="absolute inset-0 rounded-full border-4 border-slate-200"></div>
                   <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 spinner-ring"></div>
                 </div>
-                <p className="text-xs text-slate-500 font-bold">يتم التحقق من الحسابات المحمية...</p>
+                <p className="text-xs text-slate-500 font-bold">يتم التحقق من الحسابات...</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 md:gap-3">
-                {ALL_CHAT_USERS.map(user => {
-                  const acc = userAccounts[user];
-                  const hasPass = !!(acc?.password && acc.password.length > 0);
-                  const display = acc?.displayName || user;
-                  return (
-                    <button key={user} onClick={()=>handleIdentityPick(user)}
-                      className={`relative p-3 md:p-4 rounded-xl md:rounded-2xl text-xs md:text-sm font-black transition border-2 hover:scale-[1.02] flex flex-col items-center gap-1.5 md:gap-2 ${user==='الدعم'?'bg-amber-50 border-amber-300 text-amber-800':'bg-slate-50 border-slate-200 text-slate-800'}`}>
-                      <AnonymousAvatar size={36} tone={user==='الدعم'?'amber':'slate'} />
-                      <div>{user==='الدعم' ? 'الدعم 🔒' : display}</div>
-                      {hasPass && user !== 'الدعم' && (<span className="absolute top-1 left-1 text-[10px] bg-slate-800 text-white px-1.5 py-0.5 rounded-full">🔒</span>)}
+              <>
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button type="button" onClick={() => { playSound('click'); setAuthScreen('login'); }}
+                    className={`flex-1 font-black text-xs md:text-sm py-2 rounded-lg transition ${authScreen === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+                    🔓 تسجيل دخول
+                  </button>
+                  <button type="button" onClick={() => { playSound('click'); setAuthScreen('register'); }}
+                    className={`flex-1 font-black text-xs md:text-sm py-2 rounded-lg transition ${authScreen === 'register' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+                    ✨ حساب جديد
+                  </button>
+                </div>
+
+                {authScreen === 'login' && (
+                  <form onSubmit={handleLoginSubmit} className="space-y-3">
+                    <div>
+                      <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">👤 اسم المستخدم:</label>
+                      <input type="text" value={loginForm.username}
+                        onChange={e => setLoginForm({ ...loginForm, username: e.target.value, error: '' })}
+                        required autoFocus placeholder="اسمك المسجل"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">🔒 كلمة المرور:</label>
+                      <input type="password" value={loginForm.password}
+                        onChange={e => setLoginForm({ ...loginForm, password: e.target.value, error: '' })}
+                        required placeholder="• • • •"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    </div>
+                    {loginForm.error && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 text-[11px] md:text-xs p-2.5 rounded-xl text-center font-bold">⚠️ {loginForm.error}</div>
+                    )}
+                    <button type="submit" className="btn-brand w-full font-black py-3 rounded-xl text-sm">🔓 دخول</button>
+                    <button type="button" onClick={() => { playSound('click'); setAuthScreen('register'); setLoginForm(f => ({ ...f, error: '' })); }}
+                      className="text-[11px] md:text-xs text-slate-500 hover:text-slate-800 font-bold underline block mx-auto">
+                      ليس لديك حساب؟ أنشئ حساباً جديداً
                     </button>
-                  );
-                })}
-              </div>
+                  </form>
+                )}
+
+                {authScreen === 'register' && (
+                  <form onSubmit={handleRegisterSubmit} className="space-y-3">
+                    <div>
+                      <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">👤 الاسم الأول:</label>
+                      <input type="text" value={registerForm.username}
+                        onChange={e => setRegisterForm({ ...registerForm, username: e.target.value, error: '' })}
+                        required autoFocus placeholder="مثال: مازن"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">🔒 كلمة المرور:</label>
+                      <input type="password" value={registerForm.password}
+                        onChange={e => setRegisterForm({ ...registerForm, password: e.target.value, error: '' })}
+                        required placeholder="4 أحرف على الأقل"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] md:text-xs font-bold mb-1.5 text-slate-700">🔒 تأكيد كلمة المرور:</label>
+                      <input type="password" value={registerForm.confirmPassword}
+                        onChange={e => setRegisterForm({ ...registerForm, confirmPassword: e.target.value, error: '' })}
+                        required placeholder="أعد كتابتها"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    </div>
+                    {registerForm.password && registerForm.confirmPassword && registerForm.password !== registerForm.confirmPassword && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 text-[11px] md:text-xs p-2.5 rounded-xl text-center font-bold">⚠️ كلمتا المرور غير متطابقتين</div>
+                    )}
+                    {registerForm.error && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 text-[11px] md:text-xs p-2.5 rounded-xl text-center font-bold">⚠️ {registerForm.error}</div>
+                    )}
+                    <button type="submit" className="btn-brand w-full font-black py-3 rounded-xl text-sm">✨ إنشاء حساب</button>
+                    <button type="button" onClick={() => { playSound('click'); setAuthScreen('login'); setRegisterForm(f => ({ ...f, error: '' })); }}
+                      className="text-[11px] md:text-xs text-slate-500 hover:text-slate-800 font-bold underline block mx-auto">
+                      لديك حساب؟ سجّل دخولك
+                    </button>
+                  </form>
+                )}
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-[10px] md:text-[11px] text-amber-800 text-center font-bold">
+                  👑 الإداري: استخدم اسم "الدعم" مع رمز الدخول في كلمة المرور
+                </div>
+              </>
             )}
           </div>
         </div>
